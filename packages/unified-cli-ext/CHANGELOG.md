@@ -5,6 +5,17 @@ It is not the changelog of an independently published package.
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-07-24
+
+- Promotes live-verified Grok and OpenCode to Stable for Python, CLI, and REPL,
+  including models, images, tools, web, streaming, and sessions.
+- Keeps the other 16 adapters executable as Preview and exposes callback-free
+  default/capability metadata in provider menus.
+- Prevents a wrong same-name Grok npm package from falling through to direct
+  trust; the official native path remains pinned by path and digest.
+- Keeps OpenCode browser chat disabled until inherited remote/system MCP
+  startup can be positively suppressed.
+
 ## [0.5.3] - 2026-07-23
 
 - Documents and regression-tests `from unified_cli import create` as the
@@ -90,7 +101,8 @@ Initial extension-foundation release for `unified-cli` 0.5.x.
   extension package to public PyPI and did not create a GitHub Release. The
   planned 0.5.2 unified distribution supersedes that split-release plan.
 
-[Unreleased]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.0...v0.5.1

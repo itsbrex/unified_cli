@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import unified_cli_ext.providers.grok as grok_module
 from unified_cli import registry as core_registry
 from unified_cli import settings as core_settings
 from unified_cli.errors import UnifiedError
@@ -115,11 +116,16 @@ def provider(tmp_path, grok_binary, **options):
     return PLUGIN.factory(cwd=str(tmp_path), bin_path=str(grok_binary), **options)
 
 
-def test_grok_preview_metadata_exact_argv_and_server_disabled(grok_binary):
-    assert ADAPTER_SPEC.status is AdapterStatus.PREVIEW
+def test_grok_stable_metadata_exact_argv_and_server_disabled(grok_binary):
+    assert ADAPTER_SPEC.status is AdapterStatus.STABLE
     assert ADAPTER_SPEC.prompt.fixed_argv == GROK_HEADLESS_FIXED_ARGV
     assert ADAPTER_SPEC.environment.allowed_keys == frozenset(
-        ("XAI_API_KEY", *_EXPECTED_GROK_FIXED_ENVIRONMENT)
+        (
+            "XAI_API_KEY",
+            "GROK_HOME",
+            "GROK_AUTH_PATH",
+            *_EXPECTED_GROK_FIXED_ENVIRONMENT,
+        )
     )
     assert ADAPTER_SPEC.environment.required_keys == frozenset()
     assert dict(ADAPTER_SPEC.environment.fixed_values) == (
@@ -128,10 +134,13 @@ def test_grok_preview_metadata_exact_argv_and_server_disabled(grok_binary):
     assert dict(GROK_FIXED_ENVIRONMENT) == _EXPECTED_GROK_FIXED_ENVIRONMENT
     with pytest.raises(TypeError):
         GROK_FIXED_ENVIRONMENT["GROK_WRITE_FILE"] = "1"
-    assert ADAPTER_SPEC.capabilities == frozenset(("chat", "sessions", "stream"))
+    assert ADAPTER_SPEC.capabilities == frozenset(
+        ("chat", "images", "sessions", "stream", "tools")
+    )
     assert ADAPTER_SPEC.server_policy.enabled is False
-    assert PLUGIN.support_status == "preview"
+    assert PLUGIN.support_status == "stable"
     assert PLUGIN.server_policy.enabled is False
+    assert PLUGIN.environment_keys == frozenset(("XAI_API_KEY",))
     assert GROK_OFFICIAL_INSTALLER == "https://x.ai/cli/install.sh"
     assert GROK_DEFAULT_MODEL == "grok-4.5"
     assert GROK_REAL_AUTHENTICATED_SMOKE_CAPTURED is True
@@ -145,6 +154,16 @@ def test_grok_preview_metadata_exact_argv_and_server_disabled(grok_binary):
     prompt = "--leading; $(touch no)\nsecond line"
     built = adapter.build_prompt(
         binary, prompt, {"model": "grok-custom", "session": "session old"}
+        | {
+            "workspace_permissions": (
+                "Read(/tmp/workspace/**)",
+                "Grep(/tmp/workspace/**)",
+            ),
+            "private_state_denials": (
+                "Read(/tmp/private/**)",
+                "Grep(/tmp/private/**)",
+            ),
+        }
     )
     assert built.argv == (
         str(grok_binary),
@@ -153,7 +172,15 @@ def test_grok_preview_metadata_exact_argv_and_server_disabled(grok_binary):
         "grok-custom",
         "-r",
         "session old",
-        "-p",
+        "--allow",
+        "Read(/tmp/workspace/**)",
+        "--allow",
+        "Grep(/tmp/workspace/**)",
+        "--deny",
+        "Read(/tmp/private/**)",
+        "--deny",
+        "Grep(/tmp/private/**)",
+        "--prompt-file",
         prompt,
     )
     assert built.stdin_text is None
@@ -169,6 +196,32 @@ def test_grok_official_version_help_and_doctor_gate(tmp_path, grok_binary):
     )
     with pytest.raises(ProtocolError):
         provider(tmp_path, grok_binary)
+
+
+def test_grok_wrong_npm_identity_never_falls_back_to_direct_snapshot(
+    monkeypatch,
+):
+    calls = {"resolve": 0, "native": 0}
+    monkeypatch.setattr(
+        grok_module.shutil,
+        "which",
+        lambda _name: "/tmp/node_modules/@vibe-kit/grok-cli/bin/grok",
+    )
+
+    def reject_identity(**_kwargs):
+        calls["resolve"] += 1
+        raise ConfigurationError("wrong package identity")
+
+    def forbidden_native():
+        calls["native"] += 1
+        raise AssertionError("npm identity failure fell through to native trust")
+
+    monkeypatch.setattr(grok_module, "resolve_path_installation", reject_identity)
+    monkeypatch.setattr(grok_module, "_verified_snapshot_receipt", forbidden_native)
+
+    with pytest.raises(ConfigurationError, match="wrong package identity"):
+        grok_module._resolve_grok_installation()
+    assert calls == {"resolve": 1, "native": 0}
 
 
 def test_grok_managed_mcp_controls_are_fixed_and_not_user_overridable(
@@ -196,12 +249,11 @@ def test_grok_official_version_mode_accepts_exact_release(tmp_path, grok_binary)
 
 
 @pytest.mark.parametrize("version", ("grok 0.2.112 (next-patch)", "grok 0.3.0"))
-def test_grok_official_version_mode_rejects_unreviewed_updates(
+def test_grok_official_version_mode_accepts_feature_compatible_updates(
     tmp_path, grok_binary, version
 ):
     grok_binary.with_suffix(".version").write_text(version + "\n", encoding="utf-8")
-    with pytest.raises(ProtocolError):
-        provider(tmp_path, grok_binary)
+    assert provider(tmp_path, grok_binary).name == "grok"
 
 
 @pytest.mark.parametrize(
@@ -249,6 +301,40 @@ def test_grok_chat_stream_session_thought_drop_and_finalizer(tmp_path, grok_bina
         "done",
     ]
     assert messages[1].session_id == "session-old"
+
+
+def test_grok_images_web_models_and_auth_doctor(tmp_path, grok_binary):
+    png = b"\x89PNG\r\n\x1a\n" + b"fixture"
+    image_provider = provider(tmp_path, grok_binary)
+    assert image_provider.chat("image", images=[png]).text == "image"
+    assert grok_binary.with_suffix(".prompt").read_text(
+        encoding="utf-8"
+    ).splitlines()[-1] == "image|1|0"
+
+    web_provider = provider(tmp_path, grok_binary, web_search=True)
+    assert web_provider.chat("web").text == "web"
+    assert grok_binary.with_suffix(".prompt").read_text(
+        encoding="utf-8"
+    ).splitlines()[-1] == "web|0|1"
+
+    provider_home = tmp_path / "bound-provider-home"
+    grok_home = _private_provider_home(provider_home)
+    _write_safe_config(grok_home)
+    auth = grok_home / "auth.json"
+    auth.write_text("{}\n", encoding="utf-8")
+    auth.chmod(0o600)
+    bound = PLUGIN.launch_binder(
+        ProviderLaunchContextV1(
+            provider_id="grok",
+            bin_path=str(grok_binary),
+            provider_home=str(provider_home),
+        )
+    )
+    assert [item.id for item in bound.model_lister()] == [
+        "grok-4.5",
+        "grok-code-fast-1",
+    ]
+    assert bound.doctor()["authenticated"] is True
 
 
 def test_grok_maps_official_end_usage_fields(tmp_path, grok_binary):
@@ -636,8 +722,7 @@ def test_grok_bound_factory_and_doctor_recheck_configuration(
     config.chmod(0o600)
     with pytest.raises(ConfigurationError, match="safe template"):
         bound.factory(request)
-    with pytest.raises(ConfigurationError, match="safe template"):
-        bound.doctor()
+    assert bound.doctor()["available"] is False
 
 
 def test_grok_core_registry_uses_explicit_isolated_launch_configuration(

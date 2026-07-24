@@ -75,7 +75,7 @@ from pathlib import Path
 from unified_cli import PROVIDERS, UnifiedError, configure_extension_provider, create
 
 provider = "grok"  # claude, codex, gemini, kimi, copilot, qwen 등도 동일
-workspace = str(Path.cwd().resolve())  # Preview는 절대 경로 workspace 필요
+workspace = str(Path.cwd().resolve())  # 명시 권장; cwd를 빼면 현재 디렉터리 사용
 
 # 공식 vendor CLI를 설치/업데이트한 뒤 한 번 권장합니다. 실행 파일을 검증하고
 # 로컬 실행 영수증을 저장할 뿐, vendor 로그인은 대신 수행하지 않습니다.
@@ -106,7 +106,7 @@ for event in client.stream("현재 diff를 리뷰해줘"):
 애플리케이션 코드는 안정된 공개 API인 `unified_cli`에서 import하면 되며 별도 PyPI
 패키지나 Python sidecar가 필요 없습니다. 실행 예시는
 [`examples/09_extensions.py`](examples/09_extensions.py)에 있습니다.
-다른 언어 binding은 후속 업데이트 범위이며, 0.5.3에서 지원하는 코드 매설 계약은
+다른 언어 binding은 후속 업데이트 범위이며, 0.5.4에서 지원하는 코드 매설 계약은
 위 Python API입니다.
 
 ### 어느 방식으로 설치했든 다음 순서로 사용
@@ -138,15 +138,13 @@ unified-cli serve --manage --workspace "$PWD" --open
 활성화됩니다. `127.0.0.1`에서만 사용하세요. 공개 호환 `/v1/*` API는 더 엄격한
 Core 전용 경계를 그대로 유지합니다.
 
-18개 Preview adapter는 모두 같은 Python·터미널 API에 노출되며 명시적으로 선택할
-때만 실행을 시도합니다. 2026-07-23 무자격증명 랩에서 현재 공식 설치본 13개는
-`create()`까지 통과했습니다. Cursor, Hermes, Mistral Vibe, Qoder는 제한된 호환성
-오류를 반환했고, Poolside는 설치 과정의 EULA 동의가 필요해 설치하지 않았습니다.
-[무자격증명 랩 근거](docs/development/ext-accountless-live-lab-2026-07-23.md)를 참고하세요.
-브라우저 chat에는 고정된 읽기 전용 경계가 추가로 필요하므로 이번 릴리스에서는 `grok`,
-`copilot`, `qoder`, `mistral-vibe`, `qwen`, `kilo`, `pi`, `oh-my-pi`,
-`hermes`, `poolside`의 명시적 실행 시도를 허용합니다. 나머지도 목록과 사유가
-표시되며 `create()`/REPL/CLI에서는 계속 선택할 수 있습니다.
+18개 확장은 명시적으로 선택하면 같은 Python·CLI·REPL 경로에서 실제 실행됩니다.
+브라우저 chat은 고정된 안전 읽기 전용 mapping이 있는 provider에만 제공되지만,
+Python/CLI/REPL은 전부 지원합니다. OpenCode는 Python/CLI/REPL에서 활성이나 상속되는
+원격/시스템 MCP 시작을 완전히 끌 수 있을 때까지 browser chat에서는 제외됩니다.
+Preview는 metadata-only나 차단 상태가 아니라
+provider별 E2E가 아직 검증되지 않았다는 뜻입니다. 공식 CLI 설치·로그인·설정 후
+문제가 나면 정제한 로그/진단과 함께 [issue](https://github.com/MinwooKim1990/unified_cli/issues/new)를 등록하세요.
 
 > **사전 준비 — 이 패키지는 아무것도 설치하거나 로그인시키지 않습니다.**
 > `unified-cli` 는 이미 설치된 공식 에이전틱 CLI 들에 그저 명령을 위임하는 얇은
@@ -172,8 +170,8 @@ Core 전용 경계를 그대로 유지합니다.
 
 | 상태 | 지원 코딩 CLI (Provider ID) | 의미 |
 |---|---|---|
-| **Stable Core** | Claude Code (`claude`), OpenAI Codex (`codex`), Google Antigravity (`gemini` / `agy`) | 기존 동작과 기본값 그대로 유지 |
-| **Preview — 실행 adapter, 선택 시 시도** | Grok Build (`grok`), Kimi Code (`kimi`), GitHub Copilot CLI (`copilot`), Cursor Agent (`cursor`), CodeBuddy (`codebuddy`), Qoder (`qoder`), Mistral Vibe (`mistral-vibe`), Qwen Code (`qwen`), Cline (`cline`), OpenCode (`opencode`), Kilo Code (`kilo`), Factory Droid (`droid`), Pi (`pi`), Oh My Pi (`oh-my-pi`), Hermes Agent (`hermes`), Poolside Agent CLI (`poolside`), Amp (`amp`), GitLab Duo CLI (`gitlab-duo`) | 모든 adapter의 공통 transport fixture를 검증했고 현재 무자격증명 랩에서는 13/18이 `create()`를 통과했으며 위에 다섯 제한 사항을 기록함 |
+| **Stable** | Claude Code (`claude`), OpenAI Codex (`codex`), Google Antigravity (`gemini` / `agy`), Grok Build (`grok`), OpenCode (`opencode`) | Grok은 macOS 2026-07-23, OpenCode는 macOS 2026-07-24 실사용 검증 |
+| **Preview — 공식 CLI 설치/로그인/설정 후 실행** | Kimi Code (`kimi`), GitHub Copilot CLI (`copilot`), Cursor Agent (`cursor`), CodeBuddy (`codebuddy`), Qoder (`qoder`), Mistral Vibe (`mistral-vibe`), Qwen Code (`qwen`), Cline (`cline`), Kilo Code (`kilo`), Factory Droid (`droid`), Pi (`pi`), Oh My Pi (`oh-my-pi`), Hermes Agent (`hermes`), Poolside Agent CLI (`poolside`), Amp (`amp`), GitLab Duo CLI (`gitlab-duo`) | metadata-only/차단 상태가 아닌 실행 adapter; Preview는 provider별 E2E 미검증을 뜻함 |
 
 Preview는 “이름만 있는 카탈로그”라는 뜻이 아닙니다. 위 18개는 모두 실행 adapter가
 있으며, 사용자가 명시적으로 고르면 실제 실행을 시도합니다.
@@ -200,25 +198,20 @@ workspace와 명시적으로 선택한 Ext provider만 실행할 수 있습니�
 전용 provider home에서 실행됩니다. vendor가 로그인을 일반 home에만 저장한다면
 [확장 가이드](https://github.com/MinwooKim1990/unified_cli/blob/main/docs/extensions.ko.md)에
 나온 전용 home에서 해당 vendor의 공식 로그인을 한 번 더 진행해야 합니다. Grok은
-가이드의 검증된 격리 로그인 절차를 사용합니다.
+가이드의 검증된 격리 상태를 사용하며 공식 소유자 전용 auth 파일은 읽거나 복사하지
+않고 경로만 공식 CLI에 전달할 수 있습니다.
 
-> **Preview 호환성 안내:** Grok은 대표 로그인 실사용 검증을 마쳤습니다. 나머지는
+> **호환성 안내:** Grok과 OpenCode는 위 macOS 실사용 검증을 근거로 Stable입니다. 나머지
 > 검증된 공통 프로토콜 계열을 재사용하므로 특정 vendor 버전·계정·출력 형식에서는
 > 수정이 필요할 수 있습니다. 실패하면 prompt를 포함하지 않는 제한된 진단 파일이
 > `~/.unified-cli/preview-diagnostics/`에 생성됩니다. 해당 파일을
 > [GitHub Issue](https://github.com/MinwooKim1990/unified_cli/issues/new)에 첨부해 주세요.
 > 진단 파일에는 prompt, 환경변수 값, 인증 정보, 토큰을 기록하지 않습니다.
 
-> **OpenCode Go 실사용 결과(2026-07-24):** OpenCode `1.18.0`과 사용자의 인증된
-> Go 구독 자체는 최신 Go 모델 16개 조회, 채팅, 로컬 파일 도구, Exa 웹 검색,
-> `opencode-go/grok-4.5`의 합성 이미지 입력까지 통과했습니다. 그러나 현재
-> unified-cli adapter는 공식 Homebrew Cellar 경로를 provenance 검사에서 거부해
-> Python 호출과 REPL 채팅이 실패하고, REPL 모델은 `default` 하나만 보이며,
-> Browser Verify/Models는 HTTP 502, Browser Chat은 OpenCode 선택 비활성 상태입니다.
-> 따라서 OpenCode는 **Preview**를 유지합니다.
-> [전체 테스트 표](docs/development/opencode-go-live-smoke-2026-07-24.md)를 참고하세요.
-> OpenCode 안의 Grok 모델 통과는 별도 Grok Build CLI adapter 검증이 아니므로
-> `grok`도 Preview를 유지합니다.
+> **실사용 검증:** Grok은 macOS 2026-07-23, OpenCode는 macOS 2026-07-24에 검증했습니다.
+> Grok은 도구가 실행돼도 명시적 tool timeline이 표시되지 않을 수 있습니다. OpenCode는
+> 너무 작거나 유효하지 않은 이미지를 vendor가 거부할 수 있습니다.
+> [OpenCode 테스트 표](docs/development/opencode-go-live-smoke-2026-07-24.md)를 참고하세요.
 
 Python에서도 같은 설치와 Registry를 사용합니다. 공개 매설 API는 `create()`이며
 `unified_cli_ext`를 직접 import할 필요는 없습니다.
@@ -748,7 +741,7 @@ HOME/cache 파일 identity, Gemini는 opt-in/PATH/override와 수동 `agy` 메�
 refresh는 한 번의 probe를 공유합니다. Context cache는 provider당 8개/전체 24개 LRU,
 active refresh는 provider당 4개/전체 12개로 제한되며 가득 차면 재시도 가능한
 `resource_limit` 오류를 반환합니다. `list_models(provider, force_refresh=True)` 또는
-`unified-cli models --refresh`로 명시적으로 갱신하고,
+`unified-cli models PROVIDER --refresh`로 명시적으로 갱신하고,
 `invalidate_model_cache(provider)`(인자 생략 시 모든 내장 provider)로 폐기할 수
 있습니다. 반환되는 `ModelInfo`는 복사본이므로 호출자가 수정해도 이후 결과는 바뀌지
 않습니다.

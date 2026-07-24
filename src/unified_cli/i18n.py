@@ -307,6 +307,7 @@ _EN = {
     "repl.picker.provider_text": "↑/↓ to choose, Enter to confirm",
     "repl.picker.locked_suffix": " (locked)",
     "repl.picker.ext_preview_suffix": " (Ext Preview)",
+    "repl.picker.ext_stable_suffix": " (Ext Stable)",
     "repl.picker.default_suffix": " ★",
     "repl.picker.setting_title": "configure {name}",
     "repl.picker.setting_text": "↑/↓ to choose, Enter to confirm, Esc to cancel",
@@ -359,8 +360,8 @@ _EN = {
 
     # ===== CLI (cli.py) =====
     # top-level / no-arg hint
-    "cli.tagline": "unified CLI wrapper for Claude / Codex / Gemini",
-    "cli.app.desc": "Unified wrapper around 3 AI CLIs (claude / codex / gemini). "
+    "cli.tagline": "one Python/CLI wrapper for Claude, Codex, Gemini, Grok, OpenCode, and more",
+    "cli.app.desc": "Unified wrapper around 3 stable Core CLIs plus 18 bundled extension adapters. "
                     "On first run, `unified-cli setup` is recommended.",
     "cli.hint.first_time": "First time? [bold]unified-cli setup[/bold]  (interactive onboarding wizard)",
     "cli.hint.status": "Check status: [bold]unified-cli doctor[/bold] · [bold]unified-cli status[/bold]",
@@ -415,11 +416,11 @@ _EN = {
     "cli.help.providers.include_ext": "Include extension entry-point metadata (does not load plugin code)",
     "cli.help.providers.json": "JSON output",
     "cli.providers.title": "Provider registry",
-    "cli.help.configure": "Verify and save one Preview provider installation",
-    "cli.help.configure.provider": "Exact Preview provider id",
+    "cli.help.configure": "Verify and save one extension provider installation",
+    "cli.help.configure.provider": "Exact extension provider id",
     "cli.help.configure.no_verify": "Save without running the provider doctor",
     "cli.help.configure.json": "JSON output",
-    "cli.configure.ok": "Configured Preview provider: {provider}",
+    "cli.configure.ok": "Configured extension provider: {provider}",
     "cli.configure.home": "Isolated provider home: {path}",
     "cli.configure.grok_login": "Grok login (macOS/Linux): HOME={path} grok login --device-code",
     "cli.configure.login_hint": "Run the provider's official login command in the isolated home above if authentication is required.",
@@ -893,6 +894,7 @@ _KO = {
     "repl.picker.provider_text": "↑/↓ 선택, Enter 확정",
     "repl.picker.locked_suffix": " (잠김)",
     "repl.picker.ext_preview_suffix": " (Ext Preview)",
+    "repl.picker.ext_stable_suffix": " (Ext Stable)",
     "repl.picker.default_suffix": " ★",
     "repl.picker.setting_title": "{name} 설정",
     "repl.picker.setting_text": "↑/↓ 선택, Enter 확정, Esc 취소",
@@ -943,8 +945,8 @@ _KO = {
     "slash.desc.exit": "종료 (Ctrl+D 와 동일)",
 
     # ===== CLI (cli.py) =====
-    "cli.tagline": "Claude / Codex / Gemini 통합 CLI 래퍼",
-    "cli.app.desc": "3개 AI CLI (claude / codex / gemini) 통합 래퍼. "
+    "cli.tagline": "Claude·Codex·Gemini·Grok·OpenCode 등을 하나로 쓰는 Python/CLI 래퍼",
+    "cli.app.desc": "안정적인 Core CLI 3개와 내장 확장 adapter 18개를 하나로 다루는 래퍼. "
                     "첫 실행 시 `unified-cli setup` 을 권장합니다.",
     "cli.hint.first_time": "처음이면: [bold]unified-cli setup[/bold]  (대화형 온보딩 마법사)",
     "cli.hint.status": "상태 확인: [bold]unified-cli doctor[/bold] · [bold]unified-cli status[/bold]",
@@ -993,11 +995,11 @@ _KO = {
     "cli.help.providers.include_ext": "확장 entry point 메타데이터 포함 (plugin 코드는 로드하지 않음)",
     "cli.help.providers.json": "JSON 출력",
     "cli.providers.title": "Provider 레지스트리",
-    "cli.help.configure": "Preview provider 설치를 검증하고 저장",
-    "cli.help.configure.provider": "정확한 Preview provider ID",
+    "cli.help.configure": "확장 provider 설치를 검증하고 저장",
+    "cli.help.configure.provider": "정확한 확장 provider ID",
     "cli.help.configure.no_verify": "Provider doctor 실행 없이 저장",
     "cli.help.configure.json": "JSON 출력",
-    "cli.configure.ok": "Preview provider 설정 완료: {provider}",
+    "cli.configure.ok": "확장 provider 설정 완료: {provider}",
     "cli.configure.home": "격리된 provider home: {path}",
     "cli.configure.grok_login": "Grok 로그인(macOS/Linux): HOME={path} grok login --device-code",
     "cli.configure.login_hint": "인증이 필요하면 위 격리 home에서 해당 provider의 공식 로그인 명령을 실행하세요.",

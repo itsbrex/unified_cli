@@ -79,8 +79,8 @@ def test_generated_ext_provider_support_check_detects_modified_block(tmp_path):
     english_doc = docs_dir / "extensions.md"
     english_doc.write_text(
         english_doc.read_text(encoding="utf-8").replace(
-            "| `grok` | `preview` | `chat, sessions, stream` | `disabled` |",
-            "| `grok` | `stable` | `none` | `disabled` |",
+            "| `grok` | `stable` | `chat, images, sessions, stream, tools` | `disabled` |",
+            "| `grok` | `preview` | `none` | `disabled` |",
         ),
         encoding="utf-8",
     )

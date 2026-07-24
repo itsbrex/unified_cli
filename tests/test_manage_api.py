@@ -127,8 +127,8 @@ def test_bootstrap_one_time_replay_cookie_scope_and_safe_metadata(tmp_path, monk
             assert body["authenticated"] is True
             assert body["csrf_token"]
             assert body["versions"] == {
-                "unified_cli": "0.5.3",
-                "unified_cli_ext": "0.5.3",
+                "unified_cli": "0.5.4",
+                "unified_cli_ext": "0.5.4",
             }
             assert body["limits"]["image_total_bytes"] == 12 * 1024 * 1024
             assert body["providers"]
@@ -332,12 +332,36 @@ def test_bootstrap_lists_bundled_entry_point_metadata_without_provider_probes(
             }
             extensions = [row for row in rows if row["source"] == "extension"]
             assert len(extensions) == 18
-            assert all(row["status"] == "discovered" for row in extensions)
-            assert all(row["support_status"] == "preview" for row in extensions)
+            lifecycle = {row["id"]: row["status"] for row in extensions}
+            assert lifecycle["grok"] == lifecycle["opencode"] == "loaded"
+            assert all(
+                value == "discovered"
+                for provider, value in lifecycle.items()
+                if provider not in {"grok", "opencode"}
+            )
+            support = {row["id"]: row["support_status"] for row in extensions}
+            assert support["grok"] == support["opencode"] == "stable"
+            assert all(
+                value == "preview"
+                for provider, value in support.items()
+                if provider not in {"grok", "opencode"}
+            )
+            assert all(row["default_model"] for row in extensions)
+            assert all("chat" in row["capabilities"] for row in extensions)
             assert all(row["models_supported"] is True for row in extensions)
             assert {
                 row["id"] for row in extensions if row["chat_supported"]
             } == manage._BROWSER_SAFE_EXTENSION_PROVIDER_IDS
+            core_images = {
+                row["id"]: row["images_supported"]
+                for row in rows
+                if row["source"] == "builtin"
+            }
+            assert core_images == {
+                "claude": True,
+                "codex": True,
+                "gemini": False,
+            }
     run(scenario())
     assert calls == {"entry_points": 0, "models": 0, "popen": 0, "load": 0}
 
@@ -477,8 +501,9 @@ def test_injected_extension_snapshot_is_copied_bounded_metadata_only(
                 },
                 "chat_supported": False,
                 "verify_supported": False,
-                "models_supported": False,
-                "default_supported": False,
+                    "models_supported": False,
+                    "images_supported": False,
+                    "default_supported": False,
                 "metadata_only": True,
             }
             assert "mutated-secret-model" not in response.text

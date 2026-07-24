@@ -583,10 +583,12 @@ def test_bundled_provider_menu_is_passive_and_selection_loads_only_one(monkeypat
         "claude", "codex", "gemini",
         *repl_completion.BUNDLED_EXTENSION_PROVIDERS,
     ]
+    metadata = dict(candidates)
+    assert metadata["grok"] == metadata["opencode"] == "(Ext Stable)"
     assert all(
-        meta == "(Ext Preview)"
-        for value, meta in candidates
-        if value in repl_completion.BUNDLED_EXTENSION_PROVIDERS
+        metadata[value] == "(Ext Preview)"
+        for value in repl_completion.BUNDLED_EXTENSION_PROVIDERS
+        if value not in {"grok", "opencode"}
     )
     assert discovery["calls"] == 0
     assert grok.load_calls == kimi.load_calls == 0

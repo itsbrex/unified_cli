@@ -29,7 +29,6 @@ fixed_environment = {
     "GROK_LSP_TOOLS": "0",
     "GROK_MEMORY": "0",
     "GROK_SUBAGENTS": "0",
-    "GROK_WEB_FETCH": "0",
     "GROK_RESPECT_GITIGNORE": "1",
     "GROK_CURSOR_SKILLS_ENABLED": "false",
     "GROK_CURSOR_RULES_ENABLED": "false",
@@ -70,24 +69,28 @@ if args == ["--help"]:
         print("  -p, --single <PROMPT>        Single-turn prompt")
         print("  -r, --resume [<SESSION_ID>]  Resume a session")
         print("      --output-format <FORMAT> Output format")
+        print("      --tools <TOOLS>          Enabled tools")
+        print("      --prompt-json <JSON>     Structured prompt blocks")
     raise SystemExit(0)
 
 if args == ["inspect", "--json"]:
     print('{"status":"ok"}')
     raise SystemExit(0)
 
+if args == ["--no-auto-update", "models"]:
+    print("Default model: grok-4.5")
+    print("* grok-4.5 (default)")
+    print("* grok-code-fast-1")
+    raise SystemExit(0)
+
 fixed = [
     "--no-auto-update",
     "--sandbox",
-    "strict",
+    "unified-cli-strict",
     "--permission-mode",
     "dontAsk",
     "--tools",
     "read_file,grep,list_dir",
-    "--allow",
-    "Read",
-    "--allow",
-    "Grep",
     "--deny",
     "Bash",
     "--deny",
@@ -105,9 +108,40 @@ fixed = [
     "--output-format",
     "streaming-json",
 ]
-if args[: len(fixed)] != fixed:
+web_fixed = [
+    "--no-auto-update",
+    "--sandbox",
+    "unified-cli-strict",
+    "--permission-mode",
+    "dontAsk",
+    "--tools",
+    "read_file,grep,list_dir,web_search,web_fetch",
+    "--allow",
+    "WebSearch",
+    "--allow",
+    "WebFetch",
+    "--deny",
+    "Bash",
+    "--deny",
+    "Edit",
+    "--deny",
+    "MCPTool",
+    "--no-plan",
+    "--no-subagents",
+    "--no-memory",
+    "--output-format",
+    "streaming-json",
+]
+if args[: len(fixed)] == fixed:
+    args = args[len(fixed) :]
+    expected_web_fetch = "0"
+elif args[: len(web_fixed)] == web_fixed:
+    args = args[len(web_fixed) :]
+    expected_web_fetch = "1"
+else:
     raise SystemExit(91)
-args = args[len(fixed) :]
+if os.environ.get("GROK_WEB_FETCH") != expected_web_fetch:
+    raise SystemExit(95)
 if len(args) < 4 or args[0] != "-m":
     raise SystemExit(92)
 model = args[1]
@@ -118,11 +152,55 @@ if args[:1] == ["-r"]:
         raise SystemExit(93)
     session = args[1]
     args = args[2:]
-if len(args) != 2 or args[0] != "-p":
+allow_rules = []
+while args[:1] == ["--allow"] and len(args) >= 2:
+    allow_rules.append(args[1])
+    args = args[2:]
+deny_rules = []
+while args[:1] == ["--deny"] and len(args) >= 2:
+    deny_rules.append(args[1])
+    args = args[2:]
+if (
+    len(allow_rules) != 2
+    or not allow_rules[0].startswith("Read(")
+    or not allow_rules[1].startswith("Grep(")
+    or len(deny_rules) not in (2, 4)
+    or not all(
+        rule.startswith(("Read(", "Grep(")) for rule in deny_rules
+    )
+):
+    raise SystemExit(93)
+if len(args) != 2 or args[0] != "--prompt-file":
     raise SystemExit(94)
-prompt = args[1]
+try:
+    with open(args[1], "r", encoding="utf-8") as handle:
+        blocks = json.load(handle)
+except (OSError, ValueError):
+    raise SystemExit(96)
+if (
+    not isinstance(blocks, list)
+    or not blocks
+    or not isinstance(blocks[0], dict)
+    or blocks[0].get("type") != "text"
+    or not isinstance(blocks[0].get("text"), str)
+):
+    raise SystemExit(97)
+for block in blocks[1:]:
+    if (
+        not isinstance(block, dict)
+        or block.get("type") != "image"
+        or not isinstance(block.get("data"), str)
+        or block.get("mimeType") not in (
+            "image/png",
+            "image/jpeg",
+            "image/webp",
+            "image/gif",
+        )
+    ):
+        raise SystemExit(98)
+prompt = blocks[0]["text"]
 with open(os.path.realpath(sys.argv[0]) + ".prompt", "a", encoding="utf-8") as handle:
-    handle.write(prompt + "\n")
+    handle.write("{}|{}|{}\n".format(prompt, len(blocks) - 1, expected_web_fetch))
 
 if prompt == "nonzero":
     sys.stderr.write("provider failed\n")

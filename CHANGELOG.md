@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.4] - 2026-07-24
+
+### Added
+
+- Promoted the live-verified Grok Build and OpenCode adapters to Stable with
+  Python, one-shot CLI, REPL, model refresh, streaming, images, tools, web
+  search, and native-session support.
+- Made every other bundled extension an executable Preview adapter rather than
+  a blocked catalog entry; passive provider menus now show each declared
+  default model and capability without importing provider code.
+
+### Fixed
+
+- Preserved extension image support through browser provider normalization, so
+  the upload control is enabled only for providers that actually accept images.
+- Made no-argument REPL settings open interactive selectors, including
+  provider, model, language, theme, permissions, and other configurable values;
+  unique slash-command prefixes continue to work.
+- Restored strict Grok provenance: a wrong same-name npm package can no longer
+  fall through to direct executable trust, while the reviewed native binary is
+  accepted only by its pinned path and digest.
+
+### Security
+
+- Kept OpenCode available in Python, CLI, and REPL but excluded it from browser
+  chat until the vendor provides a launch contract that positively disables
+  all remotely or centrally configured MCP startup.
+- Extension browser chat remains limited to adapters with a fixed read-only
+  mapping; public `/v1/*` routes remain Core-only.
+
+### Documentation
+
+- Rewrote English and Korean installation and usage paths for one PyPI package,
+  source checkouts, pipx, embedded Python, REPL, browser management, all 18
+  extension IDs, Stable/Preview meaning, and sanitized issue reporting.
+
 ## [0.5.3] - 2026-07-23
 
 ### Added
@@ -379,7 +415,8 @@ Initial public release.
   `gemini-3.5-flash` continue to route to it. Note: `agy` headless output is
   plain text and does **not** report token usage.
 
-[Unreleased]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.3...HEAD
+[Unreleased]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.4...HEAD
+[0.5.4]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.3...v0.5.4
 [0.5.3]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.2...v0.5.3
 [0.5.2]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.1...v0.5.2
 [0.5.1]: https://github.com/MinwooKim1990/unified_cli/compare/v0.5.0...v0.5.1

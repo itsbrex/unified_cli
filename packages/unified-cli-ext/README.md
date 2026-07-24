@@ -2,10 +2,11 @@
 
 This directory organizes the extension source included in
 [`unified-cli`](https://github.com/MinwooKim1990/unified_cli). For the planned
-0.5.3 release it is not independently buildable or installable: one
+0.5.4 release it is not independently buildable or installable: one
 `unified-cli` wheel provides both `unified_cli` and `unified_cli_ext`. The
 extension feature set ships transport and runtime contracts plus 18 executable
-Preview adapters that are attempted only when explicitly selected.
+adapters that are attempted only when explicitly selected: Grok/OpenCode are
+Stable and the other 16 remain Preview.
 
 ## What this release does—and does not do
 
@@ -18,10 +19,10 @@ exposure for extensions remains off.
 The installed catalog has entry-point metadata for Grok, Kimi, Copilot,
 Cursor, CodeBuddy, Qoder, Mistral Vibe, Qwen, Cline, OpenCode, Kilo Code,
 Factory Droid, Pi, Oh My Pi, Hermes Agent, Poolside Agent CLI, Amp, and GitLab
-Duo CLI. Grok is a read-tool-limited **Preview** with `chat`, `stream`, and
-`sessions` capabilities. Every catalog entry has an executable **Preview**
-adapter. Common transports are fixture-tested, but vendor CLI and account
-compatibility is not guaranteed.
+Duo CLI. Grok and OpenCode are live-verified **Stable** adapters with
+`chat`, `stream`, `sessions`, `tools`, and `images`; every other catalog entry
+has an executable **Preview** adapter. Common transports are fixture-tested,
+but Preview vendor CLI and account compatibility is not guaranteed.
 All extension server policies are disabled.
 
 For Grok Build, Kimi Code CLI, GitHub Copilot CLI, and Cursor Agent CLI, the
@@ -33,8 +34,8 @@ only the documented official CLI shape, rejects the known unrelated
 exposes only `read_file`, `grep`, and `list_dir`. Offline fixtures cover exact
 argv construction, stream/session normalization, malformed output, cancellation,
 and output limits. One representative isolated device-code smoke of official
-native Grok `0.2.111` passed on macOS arm64 on 2026-07-23. It remains Preview
-and server-disabled because that is one version/platform/auth sample. Kimi `-p` auto-approves normal tools;
+native Grok `0.2.111` passed on macOS arm64 on 2026-07-23 and is now Stable.
+Kimi `-p` auto-approves normal tools;
 Copilot still lacks the required local provenance capture; and Cursor still
 needs its positional prompt and configuration boundaries verified. Those
 providers, like every Preview entry other than Grok, are fixture-tested rather
@@ -60,33 +61,34 @@ Install the planned unified release; Core and extensions are a feature boundary,
 not two distributions:
 
 ```bash
-python -m pip install "unified-cli==0.5.3"
+python -m pip install "unified-cli==0.5.4"
 ```
 
 If a developer or tester installed a legacy local or failed split wheel, first
 run `python -m pip uninstall -y unified-cli-ext`, then run
-`python -m pip install --force-reinstall "unified-cli==0.5.3"`. No separate
+`python -m pip install --force-reinstall "unified-cli==0.5.4"`. No separate
 project was published to public PyPI.
 
 The import package is `unified_cli_ext`. Before selecting Grok, complete the
 official-native-binary snapshot, isolated login, and
 `configure_extension_provider(...)` registration in the root
 [Extensions guide](https://github.com/MinwooKim1990/unified_cli/blob/main/docs/extensions.md).
-Then the Preview can be selected explicitly:
+Then the Stable adapter can be selected explicitly:
 
 ```bash
 unified-cli chat "explain this project" --provider grok --model grok-4.5
 ```
 
-The 0.1 Preview setup uses the native layout installed by
+The Stable native setup uses the layout installed by
 `https://x.ai/cli/install.sh`; `@xai-official/grok` is an official vendor
 alternative but is not registered by that setup recipe, while
 `@vibe-kit/grok-cli` is rejected. Require exactly Grok `0.2.111`; unreviewed
 patch and minor versions fail closed. The default and only model observed in
 the representative smoke was `grok-4.5`.
-Authentication uses an isolated provider `HOME`, not an assumed reusable host
-login, and requires the exact private (`0600`) safe config template before
-login; a missing config or other provider config is rejected. The fixed adapter
+Authentication prefers an isolated provider `HOME`; an existing official
+owner-only `~/.grok/auth.json` may be passed to the vendor CLI by path without
+the wrapper reading or copying it. The exact private (`0600`) safe config is
+required. The fixed adapter
 boundary disables auto-update, write, tool search, LSP, plan, subagents, memory,
 web, managed MCP, official marketplace auto-registration, and
 Claude/Cursor/Codex skills, rules, agents, MCPs, hooks, and sessions;
@@ -104,7 +106,7 @@ for the full catalog and official vendor documentation.
 ## Optional protocol dependencies
 
 Protocol SDKs remain optional; they are not required for Core or Grok in
-`unified-cli` 0.5.3. The `acp` extra is required for ACP-based Preview
+`unified-cli` 0.5.4. The `acp` extra is required for ACP-based Preview
 providers, but installing it does not select or run a provider by itself. The available extras are `acp`, `mcp`,
 `all` (both protocol SDKs), and `dev` (test dependencies).
 
@@ -156,18 +158,18 @@ records, and none of this imports a plugin or probes a provider at startup.
 
 ## Status
 
-This release bundles 18 executable Preview integrations. The credential-free
+This release bundles 2 Stable and 16 executable Preview integrations. The credential-free
 2026-07-23 lab reached `create()` for 13 current official installations.
 Cursor, Hermes, Mistral Vibe, and Qoder returned bounded compatibility errors;
 Poolside was not installed because accepting its EULA was outside the test
 authorization. Grok also has a representative authenticated native smoke.
 See the root
 [lab evidence](../../docs/development/ext-accountless-live-lab-2026-07-23.md).
-An authenticated OpenCode Go smoke on 2026-07-24 confirmed the vendor CLI's
-models, chat, file tools, web search, and one image-capable model, but the
-unified-cli adapter failed provenance binding for the official Homebrew
-installation on Python, REPL, and Browser surfaces. OpenCode therefore remains
-Preview; see the
+An authenticated OpenCode Go smoke on 2026-07-24 confirmed the unified Python,
+CLI, and REPL paths for models, chat, file tools, web search, sessions, and
+image input. OpenCode is Stable on those surfaces. Browser chat remains
+disabled until inherited remote/system MCP startup can be positively
+suppressed; see the
 [live matrix](../../docs/development/opencode-go-live-smoke-2026-07-24.md).
 No Ext provider is exposed through Core's public-compatible server routes.
 Failed Preview runs write prompt-free reports under

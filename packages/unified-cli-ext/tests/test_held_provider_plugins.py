@@ -843,12 +843,14 @@ def test_grok_requires_xai_identity_and_rejects_third_party_name_collision():
     assert module.GROK_REAL_SMOKE_PLATFORM == "macos-aarch64"
     assert module.GROK_REAL_SMOKE_DATE == "2026-07-23"
     assert module.ADAPTER_SPEC.binary.executable == "grok"
-    assert module.ADAPTER_SPEC.status is AdapterStatus.PREVIEW
-    assert module.PLUGIN.support_status == "preview"
-    assert module.PLUGIN.capabilities == frozenset(("chat", "sessions", "stream"))
+    assert module.ADAPTER_SPEC.status is AdapterStatus.STABLE
+    assert module.PLUGIN.support_status == "stable"
+    assert module.PLUGIN.capabilities == frozenset(
+        ("chat", "images", "sessions", "stream", "tools")
+    )
     assert module.PLUGIN.server_policy.enabled is False
     assert module.ADAPTER_SPEC.environment.allowed_keys == frozenset(
-        ("XAI_API_KEY", *fixed_environment)
+        ("XAI_API_KEY", "GROK_HOME", "GROK_AUTH_PATH", *fixed_environment)
     )
     assert dict(module.ADAPTER_SPEC.environment.fixed_values) == fixed_environment
     assert dict(module.GROK_FIXED_ENVIRONMENT) == fixed_environment

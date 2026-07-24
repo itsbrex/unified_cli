@@ -1,18 +1,19 @@
 # Extensions
 
-Extensions are bundled with Core in the `unified-cli` 0.5.3
+Extensions are bundled with Core in the `unified-cli` 0.5.4
 distribution; `unified_cli` and `unified_cli_ext` are both public namespaces in
 that one wheel. Core continues to support Claude, Codex, and Gemini (`agy`) as
 its only defaults. Extensions are a feature boundary: using one does not change
 those defaults, add an extension to Core's local server allowlist, or install or
 configure vendor software.
 
-The bundled extensions provide 18 explicit provider entry points and
-executable **Preview** adapters. Grok Build is backed by offline fixtures and
-one representative authenticated native smoke. Other providers use
-fixture-tested common transports and are attempted only when explicitly
-selected. Vendor CLI and account compatibility is not guaranteed. No Ext
-provider is enabled in the public Core `/v1/*` server routes.
+The bundled extensions provide 18 explicit provider entry points and executable
+adapters. Grok is Stable from macOS live verification on 2026-07-23 and
+OpenCode is Stable from macOS live verification on 2026-07-24. The other 16
+are executable Preview adapters after their official CLI is installed,
+authenticated, and configured; Preview means provider-specific E2E has not yet
+been verified, not metadata-only or blocked. No Ext provider is enabled in the
+public Core `/v1/*` server routes.
 
 Vendor binaries, accounts, subscriptions, and their updates remain
 user-owned. Installing Ext alone does not install a vendor CLI, log in, call a
@@ -21,7 +22,7 @@ service, or incur charges. Ext is not affiliated with the vendors listed here.
 ## Install and inspect
 
 ```bash
-python -m pip install "unified-cli==0.5.3"
+python -m pip install "unified-cli==0.5.4"
 python -c "import unified_cli_ext; print(unified_cli_ext.__name__)"
 unified-cli providers --include-ext
 ```
@@ -30,31 +31,23 @@ The Python command only confirms that the bundled extension namespace imports.
 The `providers` command displays installed entry-point metadata. Neither
 verifies a vendor installation, authentication state, or service availability.
 
-For a developer or tester with a legacy local or failed split wheel, recover
-before installing the planned unified release:
-
-```bash
-python -m pip uninstall -y unified-cli-ext
-python -m pip install --force-reinstall "unified-cli==0.5.3"
-```
-
 Core keeps this discovery import-free. `unified-cli providers --include-ext`
-reports the bundled entries as lifecycle `discovered` and support `preview`
-without importing them. An explicit request loads only that provider's entry
-point. All 18 entries have executable Preview adapters. The 2026-07-23
-credential-free lab reached `create()` for 13 current official installations.
-Cursor, Hermes, Mistral Vibe, and Qoder returned bounded compatibility errors;
-Poolside was not installed because its installer required EULA acceptance.
-See the [accountless lab evidence](development/ext-accountless-live-lab-2026-07-23.md).
-Grok continues only after its explicitly selected local binary passes the
-exact `0.2.111` version and bounded feature probes. Ext providers remain
-disabled in public `/v1/*` routes.
+shows Grok/OpenCode as live-verified Stable adapters and the other 16 as
+callback-free `discovered`/`preview` entries. An explicit request loads only
+that provider's entry point. Python `create()`, CLI, and REPL can run all 18;
+browser chat requires a fixed safe read-only mapping and is therefore a
+narrower surface. OpenCode browser chat is intentionally unavailable because
+its merged remote/system MCP configuration cannot yet be positively disabled;
+its Python, CLI, and REPL paths are enabled. Refresh models only when asked:
+`unified-cli models PROVIDER --refresh` or REPL `/model --refresh`. If a
+provider fails, file sanitized logs/diagnostics in an issue. Ext providers
+remain disabled in public `/v1/*` routes.
 
-## Grok Preview setup and boundary
+## Grok Stable setup and boundary
 
 The normal setup is short. `configure` verifies the official executable,
 creates the reviewed isolated configuration, and stores a launch receipt. The
-vendor's official login then writes only to that isolated home:
+vendor's official login can then write to that isolated home:
 
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
@@ -74,9 +67,10 @@ client = create("grok", cwd=str(Path.cwd().resolve()))
 print(client.chat("Explain this repository").text)
 ```
 
-The normal user `~/.grok` authentication is never copied. If login is missing,
-Python and the CLI return a sanitized `auth_expired` error with the isolated
-login instruction.
+The normal user `~/.grok/auth.json` is never read or copied by the wrapper. If
+present with strict owner-only metadata, the official CLI receives its path
+through `GROK_AUTH_PATH`; otherwise the isolated login above is used. If login
+is missing, Python and the CLI return a sanitized `auth_expired` error.
 
 <details>
 <summary>Manual native snapshot verification reference</summary>
@@ -84,9 +78,9 @@ login instruction.
 The following longer recipe documents the checks performed automatically and
 is intended for maintainers auditing the reviewed macOS arm64 snapshot.
 
-Grok Build Preview is one runnable Ext provider. Its primary official
+Grok Build is a Stable Ext provider. Its primary official
 native installer is `https://x.ai/cli/install.sh`; the official npm package
-`@xai-official/grok` is a vendor alternative, but this 0.1 Preview setup uses
+`@xai-official/grok` is a vendor alternative, but this Stable native path uses
 the native install layout only. The known unrelated
 `@vibe-kit/grok-cli` CLI shape is rejected. The only reviewed version is
 `0.2.111`; other versions fail closed. The only verified platform is macOS
@@ -386,22 +380,20 @@ access can change a path between those operations.
 | Stable | A released, supported integration with the documented compatibility evidence. |
 | Preview | An enabled integration still being evaluated; its limits are documented. |
 
-All 18 catalog entries below have executable **Preview** adapters and are
-attempted when explicitly selected. The current accountless lab reached
-`create()` for 13/18; its four compatibility blockers and one EULA-limited
-installation are documented above. Grok has representative authenticated
-live-test evidence; other providers have fixture-tested common transports,
-not a guarantee of vendor or account compatibility. All Ext public-server policies are disabled, so
+Grok and OpenCode are Stable, live-verified macOS integrations (2026-07-23 and
+2026-07-24 respectively). The other 16 catalog entries are executable Preview
+adapters attempted when explicitly selected after official CLI
+install/auth/configure; they are not catalog-only. Preview does not guarantee
+vendor/account compatibility. All Ext public-server policies are disabled, so
 public-compatible `/v1/*` routes remain Core-only. The loopback-only
-`serve --manage` UI may still invoke an explicitly selected Ext provider in a
-registered workspace through the same Python `create()` path.
+`serve --manage` UI may invoke only the audited browser-safe Ext subset in a
+registered workspace through the same Python `create()` path. OpenCode remains
+enabled in Python/CLI/REPL but is excluded from browser chat until all inherited
+MCP startup can be disabled.
 
-OpenCode Go was also tested with an authenticated account on 2026-07-24. Its
-official CLI passed model refresh, chat, local tools, web search, and a
-synthetic image, but unified-cli failed provenance binding for the official
-Homebrew installation across Python, REPL, and Browser surfaces. OpenCode
-therefore remains Preview. See the
-[live smoke matrix](development/opencode-go-live-smoke-2026-07-24.md).
+Grok can execute tools while its explicit tool timeline is unavailable.
+OpenCode vendors can reject tiny or invalid images. See the
+[OpenCode live smoke matrix](development/opencode-go-live-smoke-2026-07-24.md).
 
 ## Generated provider support
 
@@ -419,13 +411,13 @@ manual design record.
 | `cursor` | `preview` | `chat` | `disabled` |
 | `droid` | `preview` | `chat, stream` | `disabled` |
 | `gitlab-duo` | `preview` | `chat` | `disabled` |
-| `grok` | `preview` | `chat, sessions, stream` | `disabled` |
+| `grok` | `stable` | `chat, images, sessions, stream, tools` | `disabled` |
 | `hermes` | `preview` | `chat` | `disabled` |
 | `kilo` | `preview` | `chat` | `disabled` |
 | `kimi` | `preview` | `chat` | `disabled` |
 | `mistral-vibe` | `preview` | `chat` | `disabled` |
 | `oh-my-pi` | `preview` | `chat, stream` | `disabled` |
-| `opencode` | `preview` | `chat` | `disabled` |
+| `opencode` | `stable` | `chat, images, sessions, stream, tools` | `disabled` |
 | `pi` | `preview` | `chat, stream` | `disabled` |
 | `poolside` | `preview` | `chat` | `disabled` |
 | `qoder` | `preview` | `chat` | `disabled` |
@@ -458,7 +450,7 @@ CLI and account combinations have not all been live-tested.
 | `mistral-vibe` | Mistral Vibe (`vibe`, `mistral-vibe`) | JSONL message stream candidate | `chat` candidate; Core capability none | Held | Candidate private config with update checks off; direct and `vibe-acp` paths require separate verification | [Install](https://docs.mistral.ai/getting-started/quickstarts/vibe-code/install-cli) · [CLI workflow](https://docs.mistral.ai/vibe/code/cli/work-with-cli) · [ACP surfaces](https://docs.mistral.ai/vibe/code/choose-cli-vscode-web-sessions) |
 | `qwen` | Qwen Code (`qwen`, `@qwen-code/qwen-code`) | JSONL candidate | `chat` candidate; Core capability none | Held | Backend selection, credentials, update behavior, and event schema require verification | [Repository](https://github.com/QwenLM/qwen-code) · [Headless mode](https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/) · [Authentication](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/) |
 | `cline` | Cline CLI (`cline`) | JSONL candidate; separate ACP candidate | `chat` candidate; Core capability none | Held | Candidate `CLINE_NO_AUTO_UPDATE=1`; stdin EOF, event schema, and local configuration isolation require verification | [CLI overview](https://docs.cline.bot/usage/cli-overview) · [CLI reference](https://docs.cline.bot/cli/cli-reference) · [Release source](https://github.com/cline/cline/tree/cli-v3.0.46/apps/cli) |
-| `opencode` | OpenCode (`opencode`, package `opencode-ai`) | `JSONL one-shot` candidate | `chat` candidate; Core capability none | Held | 2026-07-24 authenticated Go smoke passed the vendor CLI directly, but the current adapter rejects the official Homebrew Cellar directory chain during provenance binding; Python/REPL calls fail, Browser Verify/Models return HTTP 502, Browser Chat is disabled, and model/image/web/tool/session forwarding remains incomplete | [Documentation](https://opencode.ai/docs/) · [CLI](https://opencode.ai/docs/cli/) · [Server](https://opencode.ai/docs/server/) · [Live matrix](development/opencode-go-live-smoke-2026-07-24.md) |
+| `opencode` | OpenCode (`opencode`, package `opencode-ai`) | `JSONL one-shot` candidate | Historical `chat` candidate | Held | Historical pre-0.5.4 state: Homebrew provenance and forwarding were incomplete. Superseded by the Stable Python/CLI/REPL adapter with live-verified models, images, web, tools, and sessions. Browser chat remains disabled until inherited remote/system MCP startup can be positively suppressed. | [Documentation](https://opencode.ai/docs/) · [CLI](https://opencode.ai/docs/cli/) · [Server](https://opencode.ai/docs/server/) · [Live matrix](development/opencode-go-live-smoke-2026-07-24.md) |
 | `kilo` | Kilo Code (`kilo`, package `@kilocode/cli`) | `ACP stdio with an internal loopback server` | Explicit `chat`; Core server disabled | Experimental | Runnable with bounded ACP loopback/process/config/permission controls; behavior may change | [CLI](https://kilo.ai/docs/code-with-ai/platforms/cli) · [CLI reference](https://kilo.ai/docs/code-with-ai/platforms/cli-reference) · [Release](https://github.com/Kilo-Org/kilocode/releases/tag/v7.4.11) |
 | `droid` | Factory Droid (`droid`, npm package `droid`) | Vendor stream JSON-RPC candidate | `chat` candidate; Core capability none | Held | Candidate update control, protocol envelope, permission flow, and process lifecycle require Stage 6 verification | [CLI reference](https://docs.factory.ai/reference/cli-reference) · [Droid Exec](https://docs.factory.ai/cli/droid-exec/overview) · [Package metadata](https://registry.npmjs.org/droid/latest) |
 | `pi` | Pi Coding Agent (`pi`, package `@earendil-works/pi-coding-agent`) | Custom NDJSON RPC candidate | `chat` candidate; Core capability none | Held | Candidate `--offline` and resource-disable flags require Stage 6 verification; this is not JSON-RPC | [Package](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/package.json) · [README](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md) · [RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md) |

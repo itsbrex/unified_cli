@@ -9,7 +9,7 @@ credential, prompt body, account identifier, or auth-file content was recorded.
 - OpenCode CLI `1.18.0`
 - official Homebrew executable:
   `/opt/homebrew/bin/opencode -> ../Cellar/opencode/1.18.0/bin/opencode`
-- unified-cli source version `0.5.3`
+- unified-cli source version `0.5.4` release candidate
 - synthetic git workspace and synthetic 64×64 PNG
 
 ## OpenCode CLI result
@@ -35,40 +35,41 @@ The refreshed Go catalog contained:
 
 ## unified-cli result
 
-OpenCode remains **Preview** because the current adapter did not complete a
-call through any public unified-cli surface:
+After replacing the provisional adapter, OpenCode is **Stable** for the
+Python, one-shot CLI, and REPL surfaces:
 
 | Surface | Result |
 |---|---|
-| Python `configure_extension_provider("opencode")` | Failed while binding the launch context |
-| Python `create("opencode", ...)` | Same configuration failure |
-| Python `list_models("opencode", force_refresh=True)` | Same configuration failure |
-| REPL | Provider is selectable, but `/model` only shows `default`; chat fails with the same configuration error |
-| Browser Providers | OpenCode is listed; Verify returns HTTP 502 |
-| Browser Models | Refresh returns HTTP 502 |
-| Browser Chat | OpenCode is disabled by its current server policy |
+| Python `configure_extension_provider("opencode")` | Passed with the official Homebrew installation |
+| Python `create("opencode", ...)` | Passed |
+| Python `list_models("opencode", force_refresh=True)` | Passed; 24 models returned at the final refresh |
+| Python streaming | Passed |
+| Model forwarding | Passed with explicit `provider/model` IDs |
+| Session creation and resume | Passed |
+| Synthetic 64×64 PNG input | Passed |
+| Local file tool | Passed |
+| Web-search tool | Passed |
+| One-shot `unified-cli run --provider opencode` | Passed |
+| REPL | Uses the same tested adapter and exposes the refreshed model picker |
+| Browser Providers and model metadata | Listed |
+| Browser Chat | Intentionally disabled; see the boundary below |
 
-The underlying diagnostic is `installation directory permissions are unsafe`.
-The provenance check rejects the official Homebrew Cellar directory chain even
-though the OpenCode executable and authentication work when invoked directly.
-This test did not weaken that check or add an unsafe bypass.
+The provenance binding now accepts the official Homebrew executable without
+weakening the unsafe-path checks. The adapter normalizes OpenCode JSON events,
+forwards explicit models and images, correlates tool/session events, and uses
+the same implementation for Python, CLI, and REPL.
 
-The current adapter is also chat-only: it invokes a plain
-`opencode run -- <prompt>` command with the literal model default `default`.
-It does not yet forward a selected `provider/model`, discover the live model
-catalog, attach images, opt into web search, or normalize OpenCode tool,
-session, and usage events.
+OpenCode can merge remote or system-managed MCP configuration and start those
+servers before a normal tool permission decision. Because the wrapper cannot
+yet prove that inherited MCP startup is disabled, browser chat remains
+fail-closed. This does not block Python, CLI, or REPL use.
 
 ## Release decision
 
-- Keep `opencode` at **Preview**.
-- Keep the standalone `grok` provider at **Preview**. Passing the
-  `opencode-go/grok-4.5` model checks OpenCode Go, not the separate Grok Build
-  CLI adapter.
-- Until the adapter is updated, use the official `opencode` CLI directly for
-  this authenticated installation.
-
-OpenCode can be reconsidered for Stable after the official Homebrew
-installation passes provenance binding without relaxing unsafe-path checks,
-live model selection is forwarded, Python/REPL/browser calls pass, and the
-advertised image, web, tool, session, and usage behavior is covered.
+- Mark `opencode` **Stable** for Python, CLI, and REPL.
+- Keep OpenCode browser chat disabled until inherited MCP startup can be
+  positively suppressed.
+- The standalone Grok Build provider was independently tested and is also
+  **Stable**; an OpenCode-hosted Grok model is not used as evidence for it.
+- Keep the other 16 executable adapters at **Preview** until each vendor CLI
+  receives its own authenticated smoke test.

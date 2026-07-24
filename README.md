@@ -65,7 +65,7 @@ pipx install --force --editable ".[server,acp]"
 ### Primary use: embed any provider in Python
 
 The terminal and browser are optional front ends. The primary API is the same
-small Python wrapper for all three Core providers and all 18 Preview providers:
+small Python wrapper for all three Core providers and all 18 extension providers:
 
 ```python
 from pathlib import Path
@@ -73,7 +73,7 @@ from pathlib import Path
 from unified_cli import PROVIDERS, UnifiedError, configure_extension_provider, create
 
 provider = "grok"  # or claude, codex, gemini, kimi, copilot, qwen, ...
-workspace = str(Path.cwd().resolve())  # Preview providers require an absolute path
+workspace = str(Path.cwd().resolve())  # explicit is recommended; omit cwd to use Path.cwd()
 
 # Recommended once after installing/upgrading the vendor CLI. This verifies its
 # executable and stores a local launch receipt; it does not perform vendor login.
@@ -105,7 +105,7 @@ code should normally import the stable public API from `unified_cli`; no second
 PyPI package or subprocess-sidecar is needed. See
 [`examples/09_extensions.py`](examples/09_extensions.py) for a runnable example.
 Non-Python language bindings are future work; the supported embedded contract
-in 0.5.3 is the Python API above.
+in 0.5.4 is the Python API above.
 
 ### What to run after either installation
 
@@ -136,18 +136,15 @@ it. Plain `unified-cli serve --open` shows the read-only dashboard;
 Keep it on `127.0.0.1`; the public-compatible `/v1/*` API retains its stricter
 Core-only trust boundary.
 
-All 18 bundled Preview adapters are exposed through the same Python and
-terminal APIs and are attempted only when explicitly selected. In the
-credential-free 2026-07-23 lab, current official installations reached
-`create()` for 13 providers. Cursor, Hermes, Mistral Vibe, and Qoder returned
-bounded compatibility errors, while Poolside was not installed because its
-installer required EULA acceptance. See the
-[accountless lab evidence](docs/development/ext-accountless-live-lab-2026-07-23.md).
-Browser chat additionally requires a fixed read-only boundary; this release
-allows explicit attempts for
-`grok`, `copilot`, `qoder`, `mistral-vibe`, `qwen`, `kilo`, `pi`,
-`oh-my-pi`, `hermes`, and `poolside`. The other Preview entries still appear
-with a clear reason and remain selectable through `create()`/REPL/CLI.
+The 18 extension providers use the same Python, CLI, and REPL paths and run
+when explicitly selected—not merely as catalog metadata. Browser chat is
+available only where a fixed safe read-only mapping exists; Python, CLI, and
+REPL support every provider. OpenCode is enabled in Python/CLI/REPL but not
+browser chat until inherited remote/system MCP startup can be disabled.
+“Preview” means its provider-specific end-to-end
+coverage is not yet verified. Install, authenticate, and configure the
+official vendor CLI first; if it fails, file a sanitized diagnostic/log and an
+[issue](https://github.com/MinwooKim1990/unified_cli/issues/new).
 
 > **Prerequisites — this package installs and authenticates _nothing_.**
 > `unified-cli` is a thin wrapper that shells out to the official agentic CLIs
@@ -174,8 +171,8 @@ no second `unified-cli-ext` package to install.
 
 | Status | Supported coding CLIs (Provider ID) | What it means |
 |---|---|---|
-| **Stable Core** | Claude Code (`claude`), OpenAI Codex (`codex`), Google Antigravity (`gemini` / `agy`) | Existing behavior and defaults remain unchanged |
-| **Preview — executable adapter, attempted when selected** | Grok Build (`grok`), Kimi Code (`kimi`), GitHub Copilot CLI (`copilot`), Cursor Agent (`cursor`), CodeBuddy (`codebuddy`), Qoder (`qoder`), Mistral Vibe (`mistral-vibe`), Qwen Code (`qwen`), Cline (`cline`), OpenCode (`opencode`), Kilo Code (`kilo`), Factory Droid (`droid`), Pi (`pi`), Oh My Pi (`oh-my-pi`), Hermes Agent (`hermes`), Poolside Agent CLI (`poolside`), Amp (`amp`), GitLab Duo CLI (`gitlab-duo`) | All adapters have shared transport fixtures; the current accountless lab reached `create()` for 13/18, with five limitations documented above |
+| **Stable** | Claude Code (`claude`), OpenAI Codex (`codex`), Google Antigravity (`gemini` / `agy`), Grok Build (`grok`), OpenCode (`opencode`) | Grok was live-verified on macOS 2026-07-23; OpenCode on macOS 2026-07-24 |
+| **Preview — executable after official CLI install/auth/configure** | Kimi Code (`kimi`), GitHub Copilot CLI (`copilot`), Cursor Agent (`cursor`), CodeBuddy (`codebuddy`), Qoder (`qoder`), Mistral Vibe (`mistral-vibe`), Qwen Code (`qwen`), Cline (`cline`), Kilo Code (`kilo`), Factory Droid (`droid`), Pi (`pi`), Oh My Pi (`oh-my-pi`), Hermes Agent (`hermes`), Poolside Agent CLI (`poolside`), Amp (`amp`), GitLab Duo CLI (`gitlab-duo`) | Executable adapters, not blocked or metadata-only; Preview denotes unverified provider-specific E2E coverage |
 
 Preview does **not** mean “catalog only.” Every listed Preview provider has an
 executable adapter and is attempted when you explicitly select it:
@@ -203,27 +200,21 @@ and register an absolute workspace. Preview processes use a private provider
 home; if a vendor stores login only in its normal home, repeat that vendor's
 official login in the private home described in the
 [extension guide](https://github.com/MinwooKim1990/unified_cli/blob/main/docs/extensions.md).
-Grok uses the guide's verified isolated login setup.
+Grok uses the guide's verified isolated state and can pass the official
+owner-only auth file path without reading or copying it.
 
-> **Preview compatibility notice:** Grok has a representative authenticated
-> live test. The other Preview integrations reuse tested protocol families and
+> **Compatibility notice:** Grok and OpenCode are Stable based on the macOS
+> live checks above. The other 16 integrations reuse tested protocol families and
 > may need updates for a particular vendor version, account, or output schema.
 > A failed Preview run writes a bounded, prompt-free diagnostic under
 > `~/.unified-cli/preview-diagnostics/`. Please attach that file to a
 > [GitHub issue](https://github.com/MinwooKim1990/unified_cli/issues/new).
 > Reports intentionally omit prompts, environment values, auth data, and tokens.
 
-> **OpenCode Go live result (2026-07-24):** OpenCode `1.18.0` and the user's
-> authenticated Go subscription passed live refresh of all 16 current Go
-> models, chat, local file tools, Exa web search, and a synthetic-image check
-> with `opencode-go/grok-4.5`. The current unified-cli adapter did **not** pass:
-> its provenance binding rejects the official Homebrew Cellar directory chain,
-> Python calls and REPL chat fail, the REPL exposes only `default`, Browser
-> Verify/Models return HTTP 502, and Browser Chat disables OpenCode. OpenCode
-> therefore remains **Preview**. See the
-> [complete test matrix](docs/development/opencode-go-live-smoke-2026-07-24.md).
-> This does not validate the separate Grok Build CLI adapter, so `grok` also
-> remains Preview.
+> **Live verification:** Grok was verified on macOS on 2026-07-23 and OpenCode
+> on macOS on 2026-07-24. Grok's explicit tool timeline can be unavailable even
+> when tools execute. OpenCode vendors can reject tiny or invalid images. See
+> the [OpenCode matrix](docs/development/opencode-go-live-smoke-2026-07-24.md).
 
 Python uses the same installed package and registry. `create()` is the public
 embedded API; importing `unified_cli_ext` directly is optional:
@@ -372,7 +363,7 @@ can import**.
 
 Override via `-m <name>`. The wrapper passes any model ID straight through to
 the underlying CLI; `/model` in the REPL and the browser Refresh action query
-the selected provider explicitly, while `unified-cli models --refresh` does the
+the selected provider explicitly, while `unified-cli models PROVIDER --refresh` does the
 same from a command. For the ultra-fast coding specialist currently advertised
 by the installed catalog, use `-m gpt-5.3-codex-spark`.
 
@@ -385,7 +376,7 @@ is executed to build a fingerprint. Same-context concurrent refreshes share one
 probe. Context entries use LRU bounds of eight per provider and 24 globally;
 active refreshes are bounded to four per provider and 12 globally, with a
 retryable `resource_limit` error when full. Use
-`list_models(provider, force_refresh=True)` or `unified-cli models --refresh`
+`list_models(provider, force_refresh=True)` or `unified-cli models PROVIDER --refresh`
 to refresh explicitly, and `invalidate_model_cache(provider)` (or no argument
 for all built-ins) to discard cached records. Returned `ModelInfo` objects are
 copies, so caller mutation never changes later results.

@@ -173,7 +173,7 @@ DEFAULT_COMMANDS: Tuple[CommandSpec, ...] = (
     CommandSpec("/theme", "[auto|dark|light]", "slash.desc.theme", group="info"),
     CommandSpec("/multiline", "[on|off]", "slash.desc.multiline", group="info"),
     CommandSpec("/usage", "", "slash.desc.usage", group="info", aliases=("/tokens",)),
-    CommandSpec("/lang", "<en|ko>", "slash.desc.lang", takes="lang", group="info"),
+    CommandSpec("/lang", "[en|ko]", "slash.desc.lang", takes="lang", group="info"),
     CommandSpec("/exit", "", "slash.desc.exit", group="session", aliases=("/quit",)),
 )
 

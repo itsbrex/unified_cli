@@ -165,6 +165,12 @@ def test_plain_mode_and_initial_load_do_not_probe_providers() -> None:
     assert "loadSessions(" not in startup
 
 
+def test_provider_normalization_preserves_image_capability_for_chat_controls() -> None:
+    js = JS.read_text(encoding="utf-8")
+    assert "images_supported: value.images_supported === true" in js
+    assert "provider.images_supported === true" in js
+
+
 def test_authenticated_events_stop_when_hidden_and_retry_is_bounded() -> None:
     js = JS.read_text(encoding="utf-8")
     assert 'fetch(`${API_ROOT}/events`' in js
@@ -190,7 +196,7 @@ def test_frontend_routes_and_payloads_match_management_contract() -> None:
     assert 'body: JSON.stringify({ force_refresh: force })' in js
     assert 'workspace_id: workspace' in js
     assert 'session_id: state.resumeSessionId || null' in js
-    assert 'picker.disabled = extension' in js
+    assert 'picker.disabled = !imagesSupported' in js
     assert 'const path = `${API_ROOT}/chat/${encodeURIComponent(id)}/cancel`' in js
     assert 'if (!id) return;' in js
     assert 'body = { archived: true }' in js
