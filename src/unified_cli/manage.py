@@ -466,16 +466,16 @@ def _copy_extension_provider_snapshot(
         raise ValueError("extension provider snapshot is invalid")
 
     if lifecycle_status == "discovered":
-        if support_status != "preview":
+        if support_status not in {"stable", "preview"}:
             raise ValueError("extension provider snapshot is invalid")
         if default_model is not None and not _valid_snapshot_text(
             default_model, maximum=512
         ):
             raise ValueError("extension provider snapshot is invalid")
         # Callback-free bundled metadata may advertise the adapter's declared
-        # default and capabilities before its code is imported.  It remains
-        # non-executable unless the exact provider is explicitly selected and
-        # loaded through the Core-owned allowlist.
+        # support grade, default, and capabilities before its code is imported.
+        # It remains non-executable unless the exact provider is explicitly
+        # selected and loaded through the Core-owned allowlist.
         copied_default_model = default_model
     elif support_status == "held":
         # Held metadata may be shown, but never as executable or configured.

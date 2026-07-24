@@ -163,12 +163,7 @@ def test_core_and_bundled_ext_create_dispatch_keeps_public_python_contract(
     descriptors = registry.passive_bundled_provider_descriptors()
     assert tuple(item.id for item in descriptors) == expected_ext
     lifecycle = {item.id: item.status for item in descriptors}
-    assert lifecycle["grok"] == lifecycle["opencode"] == "loaded"
-    assert all(
-        value == "discovered"
-        for provider_id, value in lifecycle.items()
-        if provider_id not in {"grok", "opencode"}
-    )
+    assert all(value == "discovered" for value in lifecycle.values())
     status = {item.id: item.support_status for item in descriptors}
     assert status["grok"] == status["opencode"] == "stable"
     assert all(
@@ -1288,12 +1283,7 @@ def test_bundled_providers_cli_uses_passive_preview_metadata(monkeypatch, capsys
 
     assert len(extensions) == 18
     lifecycle = {item["id"]: item["status"] for item in extensions}
-    assert lifecycle["grok"] == lifecycle["opencode"] == "loaded"
-    assert all(
-        value == "discovered"
-        for provider, value in lifecycle.items()
-        if provider not in {"grok", "opencode"}
-    )
+    assert all(value == "discovered" for value in lifecycle.values())
     support = {item["id"]: item["support_status"] for item in extensions}
     assert support["grok"] == support["opencode"] == "stable"
     assert all(

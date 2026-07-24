@@ -333,12 +333,7 @@ def test_bootstrap_lists_bundled_entry_point_metadata_without_provider_probes(
             extensions = [row for row in rows if row["source"] == "extension"]
             assert len(extensions) == 18
             lifecycle = {row["id"]: row["status"] for row in extensions}
-            assert lifecycle["grok"] == lifecycle["opencode"] == "loaded"
-            assert all(
-                value == "discovered"
-                for provider, value in lifecycle.items()
-                if provider not in {"grok", "opencode"}
-            )
+            assert all(value == "discovered" for value in lifecycle.values())
             support = {row["id"]: row["support_status"] for row in extensions}
             assert support["grok"] == support["opencode"] == "stable"
             assert all(

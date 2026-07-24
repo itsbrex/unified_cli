@@ -769,7 +769,7 @@ function validBootstrap(data) {
       if (provider.default_model !== null || provider.capabilities.length !== 0
           || provider.metadata_only !== true || provider.chat_supported) return false;
     } else if (provider.status === "discovered"
-        && provider.support_status !== "preview") return false;
+        && !["stable", "preview"].includes(provider.support_status)) return false;
     if (extension && provider.chat_supported
         && (provider.metadata_only || !provider.capabilities.includes("chat")
           || provider.default_model === null)) return false;

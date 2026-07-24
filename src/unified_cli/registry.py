@@ -1272,7 +1272,10 @@ def passive_bundled_provider_descriptors() -> Tuple[ProviderDescriptorV1, ...]:
         descriptors.append(ProviderDescriptorV1(
             id=provider_id,
             source="extension",
-            status="loaded" if provider_id in verified else "discovered",
+            # Stable is a support grade, not a load-state signal. Passive
+            # metadata must remain discovered until that provider is selected
+            # and its entry point is actually imported.
+            status="discovered",
             support_status=support_status,
             default_model=default_model,
             capabilities=capabilities,
