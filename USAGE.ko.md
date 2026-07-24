@@ -2,6 +2,30 @@
 
 README 는 개요, 이 파일은 **자주 쓰는 패턴과 트러블슈팅**.
 
+## 설치와 인터페이스 선택
+
+PyPI 패키지는 `unified-cli` 하나이며 확장은 함께 들어 있습니다. 별도 확장 패키지를
+설치하지 마세요. 어느 디렉터리에서나 전역 명령으로 쓰려면 다음을 권장합니다.
+
+```bash
+pipx install "unified-cli[server,acp]"
+```
+
+소스 checkout은 가상환경을 만들고 활성화한 뒤 editable 설치를 하며, 명령은 그
+가상환경이 활성화된 동안 사용할 수 있습니다(전역 editable 명령은 checkout에서
+`pipx install --editable ".[server,acp]"`). 주 인터페이스는 Python입니다.
+`unified_cli`에서 `create()`를 import해
+`create(provider, cwd=absolute_workspace).chat(...)`로 호출하세요. CLI와
+`unified-cli repl`은 같은 기능의 대화형 front end이고, 로컬 브라우저 관리는
+`unified-cli serve --manage --workspace "$PWD" --open`을 사용합니다. 브라우저 chat은
+고정된 안전 읽기 전용 mapping이 있는 provider에만 제공되며 Python/CLI/REPL은 전부 지원합니다.
+
+확장은 lazy load됩니다. 선택한 provider 모델은
+`unified-cli models PROVIDER --refresh` 또는 REPL의 `/model --refresh`로 명시적으로
+갱신하세요. Preview는 공식 CLI 설치·로그인·설정 후 실행되는 adapter이며
+metadata-only/차단 상태가 아니라 provider별 E2E가 아직 검증되지 않았다는 뜻입니다.
+실패하면 정제한 로그나 진단을 GitHub issue로 보내 주세요.
+
 > ## ⚠️ 이용약관 & 계정 정지 위험
 > 각 provider 의 이용약관(ToS) 준수 책임은 사용자 본인에게 있으며, 이 CLI 들을
 > 자동화하면 약관을 위반할 수 있으니 **사용에 따른 위험은 본인이 부담**합니다.
@@ -619,7 +643,7 @@ except UnifiedError as e:
 → OpenAI 스키마 외 우리 확장 필드. conversation 내부 어느 provider 에서 어떤 세션으로 처리됐는지 추적용.
 
 **Q. 모델 목록이 안 업데이트된다**
-→ 메모리 캐시 1시간. `list_models(provider, force_refresh=True)` 또는 `unified-cli models --refresh`.
+→ 메모리 캐시 1시간. `list_models(provider, force_refresh=True)` 또는 `unified-cli models PROVIDER --refresh`.
 
 **Q. CI/서버에 올릴 때 OAuth 는 어떻게?**
 → 먼저 provider가 지원하는 headless 인증을 쓰세요. Claude는 `claude setup-token`으로

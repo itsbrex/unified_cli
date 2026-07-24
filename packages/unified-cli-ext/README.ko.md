@@ -1,10 +1,10 @@
 # 확장 소스 트리
 
 이 디렉터리는 [`unified-cli`](https://github.com/MinwooKim1990/unified_cli)에 포함되는
-확장 소스를 정리한 곳입니다. 0.5.3 릴리스에서는 독립적으로 build하거나 install할 수
+확장 소스를 정리한 곳입니다. 0.5.4 릴리스에서는 독립적으로 build하거나 install할 수
 없으며, 하나의 `unified-cli` wheel이 `unified_cli`와 `unified_cli_ext`를 모두 제공합니다.
 확장 기능은 전송·런타임 계약(contract)과 명시적으로 선택할 때만 실행을 시도하는
-Preview 어댑터 18개를 제공합니다.
+어댑터 18개를 제공합니다. Grok/OpenCode는 Stable이고 나머지 16개는 Preview입니다.
 
 ## 이 릴리스의 범위
 
@@ -15,10 +15,11 @@ provider의 서버 노출도 계속 꺼져 있습니다.
 
 설치되는 카탈로그에는 Grok, Kimi, Copilot, Cursor, CodeBuddy, Qoder, Mistral Vibe,
 Qwen, Cline, OpenCode, Kilo Code, Factory Droid, Pi, Oh My Pi, Hermes Agent,
-Poolside Agent CLI, Amp, GitLab Duo CLI용 엔트리포인트 메타데이터가 있습니다. Grok은
-`chat`, `stream`, `sessions` capability를 제공하는 읽기 도구 제한 **Preview**입니다.
-모든 카탈로그 항목에는 실행 코드가 있는 **Preview** adapter가 있습니다.
-공통 transport는 fixture로 검증했지만 vendor CLI·계정 호환성을 보장하지 않습니다. 모든
+Poolside Agent CLI, Amp, GitLab Duo CLI용 엔트리포인트 메타데이터가 있습니다.
+Grok과 OpenCode는 `chat`, `stream`, `sessions`, `tools`, `images`를 실사용 검증한
+**Stable** adapter입니다. 나머지 모든 항목에는 실행 코드가 있는 **Preview**
+adapter가 있습니다. 공통 transport는 fixture로 검증했지만 Preview vendor CLI·계정
+호환성을 보장하지 않습니다. 모든
 확장 서버 정책은 비활성입니다.
 
 Grok Build, Kimi Code CLI, GitHub Copilot CLI, Cursor Agent CLI에 대해 카탈로그는
@@ -27,14 +28,13 @@ Grok Build, Kimi Code CLI, GitHub Copilot CLI, Cursor Agent CLI에 대해 카탈
 공식 CLI 형태만 허용하고 관련 없는 `@vibe-kit/grok-cli` 형태를 거부하며, 자동 업데이트,
 web, plan, subagent, memory를 끄고 `read_file`, `grep`, `list_dir`만 노출합니다. 오프라인
 fixture로 정확한 argv, stream/session 정규화, 잘못된 출력, 취소, 출력 제한을 검증했습니다.
-또한 공식 native `0.2.111`의 대표 격리 인증 smoke가 macOS arm64에서 통과했습니다. 이는
-명시적인 exact setup을 사용한 단일 version/platform/auth 표본일 뿐이므로 Grok은 Stable이
-아닌 Preview이며 서버 모드는 비활성입니다.
+또한 공식 native `0.2.111`의 대표 격리 인증 smoke가 macOS arm64에서 통과해 Grok은
+Stable로 승격되었습니다. 공개 서버 모드는 계속 비활성입니다.
 Kimi `-p`는 일반 도구를 자동 승인하고, Copilot은 로컬 출처 캡처가 더 필요하며, Cursor는
 위치 인자 프롬프트와 설정 경계를 검증해야 합니다. Grok을 제외한 모든 Preview는 vendor
 CLI·계정 조합을 보장하는 대신 공통 transport fixture로 검증합니다.
 
-통합 0.5.3 릴리스에는 자격 증명, 로그인 흐름, 유료 서비스 호출이 포함되지 않습니다.
+통합 0.5.4 릴리스에는 자격 증명, 로그인 흐름, 유료 서비스 호출이 포함되지 않습니다.
 설치만으로 vendor CLI가 설치되거나 로그인·서비스 호출·과금이 발생하지 않습니다.
 provider 바이너리와 계정은 사용자가 직접 관리합니다. 자동화된 테스트는 오프라인 fixture를
 사용하고, Grok에는 위의 대표 인증 native smoke 근거도 있습니다. Grok 호출은 사용자가 exact
@@ -53,29 +53,30 @@ probe나 provider 호출을 하지 않습니다.
 계획된 통합 릴리스를 설치하세요. Core와 확장은 두 배포판이 아니라 기능 경계입니다.
 
 ```bash
-python -m pip install "unified-cli==0.5.3"
+python -m pip install "unified-cli==0.5.4"
 ```
 
 개발자나 테스터가 레거시 로컬 wheel 또는 실패한 분리 wheel을 설치했다면 먼저
 `python -m pip uninstall -y unified-cli-ext`를 실행한 후
-`python -m pip install --force-reinstall "unified-cli==0.5.3"`를 실행하세요. 공개 PyPI에는
+`python -m pip install --force-reinstall "unified-cli==0.5.4"`를 실행하세요. 공개 PyPI에는
 별도 프로젝트가 게시된 적이 없습니다.
 
 가져오기(import) 패키지 이름은 `unified_cli_ext`입니다. Grok을 선택하기 전에 루트
 [확장 가이드](https://github.com/MinwooKim1990/unified_cli/blob/main/docs/extensions.ko.md)의
 공식 native 바이너리 snapshot, 격리 로그인, `configure_extension_provider(...)` 등록을
-완료해야 합니다. 이후 Preview를 명시적으로 선택할 수 있습니다.
+완료해야 합니다. 이후 Stable adapter를 명시적으로 선택할 수 있습니다.
 
 ```bash
 unified-cli chat "이 프로젝트를 설명해줘" --provider grok --model grok-4.5
 ```
 
-0.1 Preview 설정은 `https://x.ai/cli/install.sh`의 native 설치 구조를 사용합니다.
+Stable native 설정은 `https://x.ai/cli/install.sh`의 native 설치 구조를 사용합니다.
 `@xai-official/grok`은 공식 vendor 대안이지만 이 설정 절차로는 등록하지 않으며,
 `@vibe-kit/grok-cli`는 거부합니다. Grok은 정확히 `0.2.111`만 허용하며 검토하지 않은 patch나
-minor version은 fail closed합니다. 인증은 일반 host 로그인을 재사용한다고 가정하지 않는
-격리된 provider `HOME`을 사용하며 로그인 전에 정확한 private (`0600`) safe config
-template이 필요합니다. config가 없거나 다르면 거부합니다. 고정 실행 경계는 auto-update,
+minor version은 fail closed합니다. 인증은 격리된 provider `HOME`을 우선 사용하며,
+기존 공식 소유자 전용 `~/.grok/auth.json`은 wrapper가 읽거나 복사하지 않고 경로만
+vendor CLI에 전달할 수 있습니다. 정확한 private (`0600`) safe config가 필요합니다.
+고정 실행 경계는 auto-update,
 write, tool search, LSP, plan, subagent, memory, web, managed MCP, 공식 marketplace 자동
 등록과 Claude/Cursor/Codex skills, rules, agents, MCP, hooks, sessions를 끄고 marketplace
 package에는 SHA를 요구하며 탐색은 gitignore를 존중해야 합니다. strict sandbox와
@@ -90,7 +91,7 @@ package에는 SHA를 요구하며 탐색은 gitignore를 존중해야 합니다.
 
 ## 선택적 프로토콜 의존성
 
-프로토콜 SDK는 계속 선택 사항이며 `unified-cli` 0.5.3의 Core 또는 Grok 사용에는
+프로토콜 SDK는 계속 선택 사항이며 `unified-cli` 0.5.4의 Core 또는 Grok 사용에는
 필요하지 않습니다. ACP 기반 Preview 연동을 명시적으로 사용할 때는 `acp` extra가
 필요하지만, 이를 설치하는 것만으로 provider가 선택되거나 실행되지는 않습니다. 제공되는
 extra는 `acp`, `mcp`, 두 프로토콜 SDK를 함께 설치하는 `all`,
@@ -141,16 +142,15 @@ home/environment 경계를 넘어 계정을 식별한다고 주장하지 않습�
 
 ## 상태
 
-이 릴리스에는 실행 코드가 있는 Preview 통합 18개가 있습니다. 2026-07-23
+이 릴리스에는 Stable 2개와 실행 코드가 있는 Preview 통합 16개가 있습니다. 2026-07-23
 무자격증명 랩에서 현재 공식 설치본 13개는 `create()`까지 통과했습니다. Cursor,
 Hermes, Mistral Vibe, Qoder는 제한된 호환성 오류를 반환했고, Poolside는 EULA
 동의가 필요해 설치하지 않았습니다. Grok은 별도의 대표 인증 native smoke도
 통과했습니다. 루트의
 [랩 근거](../../docs/development/ext-accountless-live-lab-2026-07-23.md)를 참고하세요.
-2026-07-24 인증된 OpenCode Go smoke에서는 vendor CLI의 모델·채팅·파일 도구·웹
-검색·이미지 가능 모델 하나가 통과했지만, unified-cli adapter는 공식 Homebrew
-설치본의 provenance binding에서 막혀 Python·REPL·Browser 호출이 실패했습니다.
-따라서 OpenCode는 Preview를 유지합니다.
+2026-07-24 인증된 OpenCode Go smoke에서 unified Python·CLI·REPL의 모델·채팅·파일
+도구·웹 검색·세션·이미지 입력이 통과해 이 경로는 Stable입니다. 상속되는 원격/시스템
+MCP 시작을 확실히 끌 수 있을 때까지 browser chat만 비활성입니다.
 [실사용 테스트 표](../../docs/development/opencode-go-live-smoke-2026-07-24.md)를
 참고하세요.
 Ext provider는 Core의 public-compatible 서버 route에 노출되지 않습니다. Preview

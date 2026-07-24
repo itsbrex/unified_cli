@@ -62,6 +62,16 @@ def test_provider_switch_sets_default_model():
     assert current["model"] == DEFAULT_MODELS["codex"]
 
 
+def test_provider_without_argument_opens_interactive_picker(monkeypatch):
+    conv, current = _fresh()
+    monkeypatch.setattr(repl, "pick_provider", lambda: "codex")
+
+    repl._handle_slash("/prov", conv, current, {}, [], use_ptk=True)
+
+    assert current["provider"] == "codex"
+    assert current["model"] == DEFAULT_MODELS["codex"]
+
+
 def test_provider_gemini_locked_does_not_switch():
     conv, current = _fresh()
     _slash("/provider gemini", conv, current)
@@ -79,6 +89,22 @@ def test_lang_persists_and_flips():
     conv, current = _fresh()
     assert i18n.current_lang() == "en"
     _slash("/lang ko", conv, current)
+    assert i18n.current_lang() == "ko"
+    assert st.get("lang") == "ko"
+
+
+def test_lang_without_argument_opens_interactive_picker(monkeypatch):
+    conv, current = _fresh()
+    monkeypatch.setattr(
+        repl,
+        "pick_value",
+        lambda name, choices, default=None: (
+            "ko" if name == "language" and tuple(choices) == ("en", "ko") else None
+        ),
+    )
+
+    repl._handle_slash("/lang", conv, current, {}, [], use_ptk=True)
+
     assert i18n.current_lang() == "ko"
     assert st.get("lang") == "ko"
 

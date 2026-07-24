@@ -61,7 +61,7 @@ def _events(lines):
 
 def _extension_descriptor(
     provider="grok",
-    capabilities=frozenset(("chat", "stream", "sessions")),
+    capabilities=frozenset(("chat", "images", "sessions", "stream", "tools")),
 ):
     return manage.ProviderDescriptorV1(
         id=provider,
@@ -102,10 +102,13 @@ def test_browser_chat_provider_workspace_permission_and_image_fail_closed(tmp_pa
         }, owner.key)
 
 
-def test_ext_preview_chat_is_lazy_audited_cwd_only_and_rejects_images(
+def test_ext_chat_is_lazy_audited_read_only_and_accepts_supported_images(
     tmp_path, monkeypatch,
 ):
     runtime, owner = _runtime(tmp_path)
+    metadata = runtime.provider_metadata()["providers"]
+    grok_metadata = next(row for row in metadata if row["id"] == "grok")
+    assert grok_metadata["images_supported"] is True
     loaded = []
 
     def snapshot(provider):
@@ -117,23 +120,28 @@ def test_ext_preview_chat_is_lazy_audited_cwd_only_and_rejects_images(
     assert loaded == ["grok"]
     assert chat.model == "preview-default"
     assert chat.provider_capabilities == frozenset(
-        ("chat", "stream", "sessions")
+        ("chat", "images", "sessions", "stream", "tools")
     )
     conversation = runtime._conversation_for_chat(chat)
     assert conversation.provider_opts_by_provider == {
-        "grok": {"cwd": str(tmp_path.resolve())}
+        "grok": {"cwd": str(tmp_path.resolve()), "web_search": False}
     }
     runtime.finish_chat(chat.id)
 
     monkeypatch.setattr(
         manage,
         "_decode_data_image",
-        lambda _value: pytest.fail("Ext images must be rejected before decoding"),
+        lambda _value: Attachment(bytes_=b"\x89PNG\r\n\x1a\nx", media_type="image/png"),
     )
-    with pytest.raises(manage.ManageError) as image_error:
-        _chat(runtime, owner, provider="grok", images=["data:image/png;base64,eA=="])
-    assert image_error.value.code == "images_unsupported"
-    assert loaded == ["grok"]
+    image_chat = _chat(
+        runtime,
+        owner,
+        provider="grok",
+        images=["data:image/png;base64,eA=="],
+    )
+    assert len(image_chat.images) == 1
+    assert loaded == ["grok", "grok"]
+    runtime.finish_chat(image_chat.id)
 
 
 def test_ext_preview_stream_reuses_python_factory_path(tmp_path, monkeypatch):
@@ -163,7 +171,7 @@ def test_ext_preview_stream_reuses_python_factory_path(tmp_path, monkeypatch):
     assert created == [(
         "grok",
         "preview-default",
-        {"cwd": str(tmp_path.resolve())},
+        {"cwd": str(tmp_path.resolve()), "web_search": False},
     )]
     assert {"type": "text_delta", "text": "factory reply"} in events
     assert events[-1] == {"type": "done", "status": "completed"}

@@ -791,12 +791,13 @@ def test_invalid_create_options_are_rejected_before_binder_runs(monkeypatch, tmp
         )
     assert calls == []
 
-    with pytest.raises(UnifiedError, match="could not be created"):
-        create(
-            "acme",
-            extension_launch=ExtensionLaunchOverridesV1(receipt=_receipt()),
-        )
-    assert calls == []
+    provider = create(
+        "acme",
+        extension_launch=ExtensionLaunchOverridesV1(receipt=_receipt()),
+    )
+    assert provider.name == "acme"
+    assert [call[0] for call in calls] == ["bind", "factory"]
+    assert calls[-1][2].workspace == os.path.realpath(os.getcwd())
 
 
 def test_malformed_stored_pointer_fails_before_fallback_binder(monkeypatch, tmp_path):

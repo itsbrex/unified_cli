@@ -5,6 +5,32 @@
 README is the overview; this file covers **day-to-day patterns and
 troubleshooting** for both the CLI and the Python API.
 
+## Install and choose an interface
+
+There is one PyPI package, `unified-cli`; extensions are bundled—do not install
+a separate extension package. For global use from any directory, prefer:
+
+```bash
+pipx install "unified-cli[server,acp]"
+```
+
+For a source checkout, create/activate its virtual environment and install it
+editable; its command is available while that environment is active (or use
+`pipx install --editable ".[server,acp]"` from the checkout for a global
+editable command). Python is the primary interface: import `create()` from
+`unified_cli` and call `create(provider, cwd=absolute_workspace).chat(...)`.
+The CLI and `unified-cli repl` are equivalent interactive front ends; use
+`unified-cli serve --manage --workspace "$PWD" --open` for local browser
+management. Browser chat is offered only to providers with a fixed safe
+read-only mapping; Python, CLI, and REPL support all providers.
+
+Extensions are lazy. Refresh a selected provider's models explicitly with
+`unified-cli models PROVIDER --refresh`, or use `/model --refresh` in the
+REPL. Preview providers are executable after their official CLI is installed,
+authenticated, and configured; Preview means provider-specific E2E has not yet
+been verified, not metadata-only or blocked. If one fails, file sanitized logs
+or diagnostics in a GitHub issue.
+
 > ## ⚠️ ToS & account-ban risk
 > You are responsible for complying with each provider's Terms of Service;
 > automating these CLIs may breach them — **use at your own risk**. The intended
@@ -647,7 +673,7 @@ the request — useful for debugging cross-provider routing.
 
 **Q. Models list looks stale.**
 → Wrapper has a 1-hour in-process cache. Use
-`list_models(provider, force_refresh=True)` or `unified-cli models --refresh`.
+`list_models(provider, force_refresh=True)` or `unified-cli models PROVIDER --refresh`.
 
 **Q. How do I deploy this headless (CI / server)?**
 → Use the provider's supported headless auth first: for Claude, create a

@@ -18,7 +18,6 @@ from unified_cli_ext.providers import (
     gitlab_duo,
     kimi,
     mistral_vibe,
-    opencode,
     qwen,
 )
 from unified_cli_ext.providers.contract import (
@@ -56,7 +55,6 @@ CASES = (
     ),
     PreviewCase(qwen, (*qwen.QWEN_HEADLESS_FIXED_ARGV, "--prompt")),
     PreviewCase(cline, (*cline.CLINE_HEADLESS_FIXED_ARGV, "--")),
-    PreviewCase(opencode, (*opencode.OPENCODE_HEADLESS_FIXED_ARGV, "--")),
     PreviewCase(amp, amp.AMP_HEADLESS_FIXED_ARGV, stdin_prompt=True),
     PreviewCase(
         gitlab_duo,
@@ -71,7 +69,6 @@ REAL_VERSION_OUTPUTS = {
     "copilot": "GitHub Copilot CLI 1.0.73.",
     "gitlab-duo": "9.6.0",
     "kimi": "0.29.0",
-    "opencode": "1.18.4",
     "qwen": "0.20.1",
 }
 

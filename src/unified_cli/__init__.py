@@ -8,12 +8,16 @@ Quick start (Python):
     resp = create("claude").chat("안녕")
     print(resp.text, resp.session_id)
 
-    # Bundled Preview providers use the same public API (example: Grok).
+    # Bundled extensions use the same public API. Grok and OpenCode are
+    # live-verified Stable adapters; the other adapters are executable Preview.
     # Configure/login once with the provider's official CLI before calling it.
     grok = create("grok", cwd="/absolute/project/path")
     for message in grok.stream("이 프로젝트를 요약해줘"):
         if message.kind == "text":
             print(message.text, end="", flush=True)
+
+    opencode = create("opencode", cwd="/absolute/project/path")
+    print(opencode.chat("변경 사항을 짧게 요약해줘").text)
 
     # Manual history (external code manages session_id)
     cli = create("codex")
@@ -43,7 +47,7 @@ Error handling:
         e.hint  # 사용자용 복구 힌트
 """
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 from .base import BaseProvider
 from .conversation import UnifiedConversation

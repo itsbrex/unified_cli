@@ -55,12 +55,21 @@ def test_single_distribution_verifier_tracks_ext_support_statuses():
     assert {"qoder", "kilo", "poolside"}.issubset(
         verifier.EXPECTED_PROVIDER_ENTRY_POINTS
     )
-    source = SCRIPT.read_text(encoding="utf-8")
-    assert (
-        'provider_id: "preview" for provider_id in EXPECTED_PROVIDER_ENTRY_POINTS'
-        in source
+    expected = {
+        provider_id: (
+            "stable" if provider_id in {"grok", "opencode"} else "preview"
+        )
+        for provider_id in verifier.EXPECTED_PROVIDER_ENTRY_POINTS
+    }
+    assert expected["grok"] == expected["opencode"] == "stable"
+    assert all(
+        status == "preview"
+        for provider_id, status in expected.items()
+        if provider_id not in {"grok", "opencode"}
     )
-    assert "Preview provider inventory does not match" in source
+    assert "extension provider support inventory does not match" in (
+        SCRIPT.read_text(encoding="utf-8")
+    )
 
 
 def test_only_root_project_is_buildable_and_publishable():

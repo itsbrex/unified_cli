@@ -247,6 +247,7 @@ class ProviderCreateRequestV1:
     max_stream_buffer_bytes: Optional[int] = None
     max_stream_events: Optional[int] = None
     max_stream_line_bytes: Optional[int] = None
+    web_search: bool = False
 
     def __post_init__(self) -> None:
         if not _valid_provider_id(self.provider_id):
@@ -255,6 +256,8 @@ class ProviderCreateRequestV1:
             raise ValueError("invalid provider create model")
         if not _valid_absolute_path(self.workspace):
             raise ValueError("provider workspace is invalid")
+        if type(self.web_search) is not bool:
+            raise ValueError("provider web_search is invalid")
         if self.timeout is not None:
             if type(self.timeout) not in (int, float):
                 raise ValueError("provider timeout is invalid")

@@ -674,6 +674,7 @@ class _AcpPluginRuntime:
                 max_stream_buffer_bytes=request.max_stream_buffer_bytes,
                 max_stream_events=request.max_stream_events,
                 max_stream_line_bytes=request.max_stream_line_bytes,
+                web_search=request.web_search,
             )
 
         def list_bound_models() -> Tuple[ModelInfo, ...]:

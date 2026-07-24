@@ -101,6 +101,8 @@ _BROWSER_EXTENSION_CAPABILITIES = frozenset((
     "chat",
     "stream",
     "sessions",
+    "tools",
+    "images",
 ))
 _EXT_SUPPORT_STATUSES = frozenset(
     ("stable", "preview", "experimental", "held")
@@ -464,13 +466,17 @@ def _copy_extension_provider_snapshot(
         raise ValueError("extension provider snapshot is invalid")
 
     if lifecycle_status == "discovered":
-        if (
-            support_status != "preview"
-            or default_model is not None
-            or copied_capabilities
+        if support_status not in {"stable", "preview"}:
+            raise ValueError("extension provider snapshot is invalid")
+        if default_model is not None and not _valid_snapshot_text(
+            default_model, maximum=512
         ):
             raise ValueError("extension provider snapshot is invalid")
-        copied_default_model = None
+        # Callback-free bundled metadata may advertise the adapter's declared
+        # support grade, default, and capabilities before its code is imported.
+        # It remains non-executable unless the exact provider is explicitly
+        # selected and loaded through the Core-owned allowlist.
+        copied_default_model = default_model
     elif support_status == "held":
         # Held metadata may be shown, but never as executable or configured.
         copied_default_model = None
@@ -1171,13 +1177,16 @@ class ManageRuntime:
         rows = []
         for descriptor in descriptors:
             policy = descriptor.server_policy
+            browser_capabilities = set(descriptor.capabilities)
+            if descriptor.id in {"claude", "codex"}:
+                browser_capabilities.add("images")
             row: Dict[str, Any] = {
                 "id": descriptor.id,
                 "source": descriptor.source,
                 "status": descriptor.status,
                 "support_status": descriptor.support_status,
                 "default_model": descriptor.default_model,
-                "capabilities": sorted(descriptor.capabilities),
+                "capabilities": sorted(browser_capabilities),
                 "server_policy": {
                     "enabled": bool(policy is not None and policy.enabled is True),
                     "requires_external_isolation": bool(
@@ -1188,6 +1197,10 @@ class ManageRuntime:
                 "chat_supported": descriptor.id in {"claude", "codex"},
                 "verify_supported": descriptor.id in _VERIFY_SPECS,
                 "models_supported": descriptor.id in _CORE_PROVIDER_IDS,
+                # Core descriptors intentionally keep their public capability
+                # set minimal, while the managed chat surface supports image
+                # input for both browser-enabled Core providers.
+                "images_supported": descriptor.id in {"claude", "codex"},
                 "default_supported": descriptor.id in _CORE_PROVIDER_IDS,
                 "metadata_only": False,
             }
@@ -1227,8 +1240,12 @@ class ManageRuntime:
                 "models_supported": (
                     descriptor.id in self._manageable_extension_provider_ids
                 ),
+                "images_supported": (
+                    browser_chat_supported
+                    and "images" in descriptor.capabilities
+                ),
                 "default_supported": False,
-                "metadata_only": True,
+                "metadata_only": not browser_chat_supported,
             })
         return {"providers": rows}
 
@@ -2011,12 +2028,6 @@ class ManageRuntime:
         raw_images = payload.get("images", [])
         if type(raw_images) is not list or len(raw_images) > MAX_IMAGES:
             raise ManageError(413, "too_many_images", "Too many images were supplied.")
-        if extension_provider and raw_images:
-            raise ManageError(
-                400,
-                "images_unsupported",
-                "Ext Preview browser chat does not support image input.",
-            )
         images = []
         total_image_bytes = 0
         for value in raw_images:
@@ -2044,6 +2055,12 @@ class ManageRuntime:
         if extension_provider:
             descriptor = self._extension_chat_descriptor(provider)
             provider_capabilities = descriptor.capabilities
+            if raw_images and "images" not in provider_capabilities:
+                raise ManageError(
+                    400,
+                    "images_unsupported",
+                    "The selected provider does not support image input.",
+                )
             model_value = payload.get("model")
             model = self._model(
                 descriptor.default_model if model_value is None else model_value,
@@ -2132,6 +2149,8 @@ class ManageRuntime:
             # Bundled Ext adapters own their fixed read-only/no-prompt argv.
             # Core supplies only the registered absolute workspace.
             provider_options = {"cwd": chat.workspace.path}
+            if chat.provider in {"grok", "opencode"}:
+                provider_options["web_search"] = web
         else:  # defensive: start_chat has already fail-closed
             raise ManageError(403, "provider_forbidden", "Provider is unavailable for browser chat.")
         conversation = UnifiedConversation(

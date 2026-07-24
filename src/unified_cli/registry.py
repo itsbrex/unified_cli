@@ -67,6 +67,50 @@ BUNDLED_EXTENSION_ENTRY_POINTS_V1: Tuple[Tuple[str, str], ...] = (
     ("amp", "unified_cli_ext.providers.amp:PLUGIN"),
     ("gitlab-duo", "unified_cli_ext.providers.gitlab_duo:PLUGIN"),
 )
+# Callback-free release metadata for adapters that completed an authenticated
+# end-to-end verification. Keeping this beside the packaged entry-point list
+# lets `providers`, REPL completion, and dashboard bootstrap show useful state
+# without importing provider code or spawning a subprocess.
+BUNDLED_VERIFIED_PROVIDER_METADATA_V1: Tuple[
+    Tuple[str, str, str, frozenset[str]], ...
+] = (
+    (
+        "grok",
+        "stable",
+        "grok-4.5",
+        frozenset(("chat", "images", "sessions", "stream", "tools")),
+    ),
+    (
+        "opencode",
+        "stable",
+        "default",
+        frozenset(("chat", "images", "sessions", "stream", "tools")),
+    ),
+)
+# Callback-free declarations for bundled adapters that are executable but have
+# not completed provider-specific authenticated E2E.  These values are copied
+# from the packaged adapter contracts and let passive CLI/REPL/browser catalogs
+# describe Preview providers without importing them or probing their binaries.
+BUNDLED_PREVIEW_PROVIDER_METADATA_V1: Tuple[
+    Tuple[str, str, frozenset[str]], ...
+] = (
+    ("amp", "default", frozenset(("chat",))),
+    ("cline", "default", frozenset(("chat",))),
+    ("codebuddy", "default", frozenset(("chat",))),
+    ("copilot", "auto", frozenset(("chat",))),
+    ("cursor", "default", frozenset(("chat",))),
+    ("droid", "provider-default", frozenset(("chat", "stream"))),
+    ("gitlab-duo", "default", frozenset(("chat",))),
+    ("hermes", "default", frozenset(("chat",))),
+    ("kilo", "default", frozenset(("chat",))),
+    ("kimi", "default", frozenset(("chat",))),
+    ("mistral-vibe", "default", frozenset(("chat",))),
+    ("oh-my-pi", "provider-default", frozenset(("chat", "stream"))),
+    ("pi", "provider-default", frozenset(("chat", "stream"))),
+    ("poolside", "default", frozenset(("chat",))),
+    ("qoder", "default", frozenset(("chat",))),
+    ("qwen", "default", frozenset(("chat",))),
+)
 
 
 @dataclass(frozen=True)
@@ -861,10 +905,15 @@ def _create_request(
 ) -> ProviderCreateRequestV1:
     values = dict(opts)
     workspace = values.pop("cwd", None)
-    if "web_search" in values:
-        web_search = values.pop("web_search")
-        if type(web_search) is not bool or web_search:
-            raise ValueError("configured extensions do not accept web_search")
+    if workspace is None:
+        workspace = os.getcwd()
+    elif type(workspace) is str and workspace and "\x00" not in workspace:
+        workspace = os.path.realpath(
+            os.path.abspath(os.path.expanduser(workspace))
+        )
+    web_search = values.pop("web_search", False)
+    if type(web_search) is not bool:
+        raise ValueError("configured extension web_search must be bool")
     if "first_output_timeout" in values:
         if values.pop("first_output_timeout") is not None:
             raise ValueError("configured extensions do not accept first_output_timeout")
@@ -883,6 +932,7 @@ def _create_request(
         provider_id=plugin.id,
         model=plugin.default_model if model is None else model,
         workspace=workspace,
+        web_search=web_search,
         **limits,
     )
 
@@ -1181,15 +1231,28 @@ def _builtin_descriptors() -> list[ProviderDescriptorV1]:
 
 
 def passive_bundled_provider_descriptors() -> Tuple[ProviderDescriptorV1, ...]:
-    """Return callback-free Preview descriptors for bundled entry points.
+    """Return callback-free release descriptors for bundled entry points.
 
     The entry-point target is deliberately validated but not imported.  Model
-    defaults and capabilities belong to provider code, so this passive view
-    does not guess them; an explicit manage action may load exactly one target.
+    defaults and capabilities are copied from callback-free release metadata.
+    An explicit command still loads exactly one selected target. ``Preview``
+    means the adapter is executable but its provider-specific authenticated
+    E2E has not yet been completed; it does not mean disabled.
     """
 
     descriptors = []
     seen = set()
+    verified = {
+        provider_id: (support_status, default_model, capabilities)
+        for provider_id, support_status, default_model, capabilities
+        in BUNDLED_VERIFIED_PROVIDER_METADATA_V1
+    }
+    preview = {
+        provider_id: ("preview", default_model, capabilities)
+        for provider_id, default_model, capabilities
+        in BUNDLED_PREVIEW_PROVIDER_METADATA_V1
+    }
+    metadata = {**preview, **verified}
     prefix = "unified_cli_ext.providers."
     for provider_id, target in BUNDLED_EXTENSION_ENTRY_POINTS_V1:
         if (
@@ -1202,13 +1265,20 @@ def passive_bundled_provider_descriptors() -> Tuple[ProviderDescriptorV1, ...]:
         ):
             raise RuntimeError("bundled provider entry-point metadata is invalid")
         seen.add(provider_id)
+        support_status, default_model, capabilities = metadata.get(
+            provider_id,
+            ("preview", None, frozenset()),
+        )
         descriptors.append(ProviderDescriptorV1(
             id=provider_id,
             source="extension",
+            # Stable is a support grade, not a load-state signal. Passive
+            # metadata must remain discovered until that provider is selected
+            # and its entry point is actually imported.
             status="discovered",
-            support_status="preview",
-            default_model=None,
-            capabilities=frozenset(),
+            support_status=support_status,
+            default_model=default_model,
+            capabilities=capabilities,
             route_prefixes=(provider_id,),
             server_policy=ProviderServerPolicyV1(
                 enabled=False,

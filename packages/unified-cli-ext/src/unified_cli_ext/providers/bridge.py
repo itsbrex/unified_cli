@@ -17,9 +17,10 @@ import threading
 import time
 import unicodedata
 from collections.abc import Iterable, Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Callable, Iterator, Optional, Tuple
+from typing import Any, Callable, Iterator, Optional, Tuple, Union
 
 from unified_cli.base import BaseProvider
 from unified_cli.core import Message, ModelInfo, Response, Usage
@@ -96,6 +97,7 @@ AdapterRecordMapperV1 = Callable[[Mapping, Any], Iterable[Mapping]]
 AdapterResponseMapperV1 = Callable[[Any, Any], Iterable[Mapping]]
 AdapterFinalizerV1 = Callable[[Any], Iterable[Mapping]]
 AdapterTurnPreflightV1 = Callable[[str, Optional[str]], None]
+AdapterPromptValueV1 = Union[str, Tuple[str, ...]]
 
 _SUPPORTED_PROCESS_TRANSPORTS = frozenset(
     (TransportKind.PLAIN, TransportKind.JSON, TransportKind.JSONL)
@@ -650,6 +652,7 @@ class AdapterProviderBridge(BaseProvider):
         turn_preflight: Optional[AdapterTurnPreflightV1],
         first_output_timeout: Optional[float] = None,
         web_search: bool = False,
+        allow_web_search: bool = False,
         max_stream_buffer_bytes: Optional[int] = None,
         max_stream_line_bytes: Optional[int] = None,
     ) -> None:
@@ -658,7 +661,9 @@ class AdapterProviderBridge(BaseProvider):
             raise ConfigurationError(
                 "adapter bridge does not support first_output_timeout"
             )
-        if web_search:
+        if type(allow_web_search) is not bool:
+            raise ConfigurationError("adapter web search support marker is invalid")
+        if web_search and not allow_web_search:
             raise ConfigurationError("adapter does not declare web search support")
         issued_default_model = _validated_model_id(default_model)
         selected_model = _validated_model_id(
@@ -711,6 +716,7 @@ class AdapterProviderBridge(BaseProvider):
         self._map_response = map_response
         self._finalize = finalize
         self._turn_preflight = turn_preflight
+        self._allow_web_search = allow_web_search
 
     @classmethod
     def _discover_bin(cls) -> Optional[str]:
@@ -781,7 +787,7 @@ class AdapterProviderBridge(BaseProvider):
         model: str,
         session_id: Optional[str],
         resume_last: bool,
-    ) -> Mapping[str, str]:
+    ) -> Mapping[str, AdapterPromptValueV1]:
         declared = self._issuance.dynamic_arguments
         values = {}
         if "model" in declared:
@@ -800,6 +806,65 @@ class AdapterProviderBridge(BaseProvider):
                 "adapter ABI v1 does not declare a resume-last argument"
             )
         return MappingProxyType(values)
+
+    @contextmanager
+    def _prepare_invocation(
+        self,
+        prompt: str,
+        images: Optional[list],
+    ) -> Iterator[Tuple[str, Mapping[str, AdapterPromptValueV1]]]:
+        """Prepare one provider invocation and retain its resources to EOF."""
+
+        self._validate_call(prompt, images)
+        yield prompt, MappingProxyType({})
+
+    def _merged_prompt_values(
+        self,
+        *,
+        model: str,
+        session_id: Optional[str],
+        resume_last: bool,
+        extra: Mapping[str, AdapterPromptValueV1],
+    ) -> Mapping[str, AdapterPromptValueV1]:
+        if not isinstance(extra, Mapping):
+            raise ConfigurationError("prepared prompt options are invalid")
+        values = dict(
+            self._prompt_values(
+                model=model,
+                session_id=session_id,
+                resume_last=resume_last,
+            )
+        )
+        for key, value in extra.items():
+            if key in values:
+                raise ConfigurationError("prepared prompt option is duplicated")
+            values[key] = value
+        return MappingProxyType(values)
+
+    @contextmanager
+    def _prepare_turn(
+        self,
+        *,
+        prompt: str,
+        images: Optional[list],
+        model: str,
+        session_id: Optional[str],
+        resume_last: bool,
+    ) -> Iterator[
+        Tuple[str, Mapping[str, AdapterPromptValueV1], _TurnState]
+    ]:
+        with self._prepare_invocation(prompt, images) as (
+            prepared_prompt,
+            extra_values,
+        ):
+            clean_session = self._session_value(session_id)
+            values = self._merged_prompt_values(
+                model=model,
+                session_id=clean_session,
+                resume_last=resume_last,
+                extra=extra_values,
+            )
+            yield prepared_prompt, values, self._turn(clean_session)
 
     def _selected_model(self, model: Optional[str]) -> str:
         issuance = self._issuance
@@ -883,7 +948,7 @@ class AdapterProviderBridge(BaseProvider):
     def _one_shot_messages(
         self,
         prompt: str,
-        values: Mapping[str, str],
+        values: Mapping[str, AdapterPromptValueV1],
         turn: _TurnState,
         token: CancellationToken,
     ) -> Tuple[Message, ...]:
@@ -924,7 +989,7 @@ class AdapterProviderBridge(BaseProvider):
     def _iter_jsonl_messages(
         self,
         prompt: str,
-        values: Mapping[str, str],
+        values: Mapping[str, AdapterPromptValueV1],
         turn: _TurnState,
         token: CancellationToken,
     ) -> Iterator[Message]:
@@ -963,7 +1028,7 @@ class AdapterProviderBridge(BaseProvider):
     async def _aiter_jsonl_messages(
         self,
         prompt: str,
-        values: Mapping[str, str],
+        values: Mapping[str, AdapterPromptValueV1],
         turn: _TurnState,
         token: CancellationToken,
     ) -> Any:
@@ -1005,7 +1070,7 @@ class AdapterProviderBridge(BaseProvider):
     def _sync_messages(
         self,
         prompt: str,
-        values: Mapping[str, str],
+        values: Mapping[str, AdapterPromptValueV1],
         turn: _TurnState,
         token: CancellationToken,
     ) -> Iterator[Message]:
@@ -1058,18 +1123,17 @@ class AdapterProviderBridge(BaseProvider):
         relay = None
         try:
             selected_model = self._selected_model(model)
-            self._validate_call(prompt, images)
-            clean_session = self._session_value(session_id)
-            values = self._prompt_values(
+            with self._prepare_turn(
+                prompt=prompt,
+                images=images,
                 model=selected_model,
-                session_id=clean_session,
+                session_id=session_id,
                 resume_last=resume_last,
-            )
-            turn = self._turn(clean_session)
-            relay = _CancellationRelay(cancel_event, token)
-            tuple(self._sync_messages(prompt, values, turn, token))
-            token.raise_if_cancelled()
-            response = turn.response(selected_model)
+            ) as (prepared_prompt, values, turn):
+                relay = _CancellationRelay(cancel_event, token)
+                tuple(self._sync_messages(prepared_prompt, values, turn, token))
+                token.raise_if_cancelled()
+                response = turn.response(selected_model)
             self._record_success(provider_id, selected_model, turn, started)
             return response
         except ExtensionError as error:
@@ -1100,19 +1164,20 @@ class AdapterProviderBridge(BaseProvider):
         succeeded = False
         try:
             selected_model = self._selected_model(model)
-            self._validate_call(prompt, images)
-            clean_session = self._session_value(session_id)
-            values = self._prompt_values(
+            with self._prepare_turn(
+                prompt=prompt,
+                images=images,
                 model=selected_model,
-                session_id=clean_session,
+                session_id=session_id,
                 resume_last=resume_last,
-            )
-            turn = self._turn(clean_session)
-            relay = _CancellationRelay(cancel_event, token)
-            for message in self._sync_messages(prompt, values, turn, token):
+            ) as (prepared_prompt, values, turn):
+                relay = _CancellationRelay(cancel_event, token)
+                for message in self._sync_messages(
+                    prepared_prompt, values, turn, token
+                ):
+                    token.raise_if_cancelled()
+                    yield message
                 token.raise_if_cancelled()
-                yield message
-            token.raise_if_cancelled()
             succeeded = True
             self._record_success(provider_id, selected_model, turn, started)
         except ExtensionError as error:
@@ -1145,32 +1210,35 @@ class AdapterProviderBridge(BaseProvider):
         worker = None
         try:
             selected_model = self._selected_model(model)
-            self._validate_call(prompt, images)
-            clean_session = self._session_value(session_id)
-            values = self._prompt_values(
+            with self._prepare_turn(
+                prompt=prompt,
+                images=images,
                 model=selected_model,
-                session_id=clean_session,
+                session_id=session_id,
                 resume_last=resume_last,
-            )
-            turn = self._turn(clean_session)
-            relay = _CancellationRelay(cancel_event, token)
+            ) as (prepared_prompt, values, turn):
+                relay = _CancellationRelay(cancel_event, token)
 
-            def run() -> Response:
-                tuple(self._sync_messages(prompt, values, turn, token))
-                token.raise_if_cancelled()
-                return turn.response(selected_model)
+                def run() -> Response:
+                    tuple(
+                        self._sync_messages(
+                            prepared_prompt, values, turn, token
+                        )
+                    )
+                    token.raise_if_cancelled()
+                    return turn.response(selected_model)
 
-            loop = asyncio.get_running_loop()
-            worker = loop.run_in_executor(None, run)
-            try:
-                response = await asyncio.shield(worker)
-            except asyncio.CancelledError:
-                token.cancel()
+                loop = asyncio.get_running_loop()
+                worker = loop.run_in_executor(None, run)
                 try:
-                    await asyncio.shield(worker)
-                except (ExtensionError, UnifiedError):
-                    pass
-                raise
+                    response = await asyncio.shield(worker)
+                except asyncio.CancelledError:
+                    token.cancel()
+                    try:
+                        await asyncio.shield(worker)
+                    except (ExtensionError, UnifiedError):
+                        pass
+                    raise
             self._record_success(provider_id, selected_model, turn, started)
             return response
         except asyncio.CancelledError:
@@ -1203,43 +1271,42 @@ class AdapterProviderBridge(BaseProvider):
         succeeded = False
         try:
             selected_model = self._selected_model(model)
-            self._validate_call(prompt, images)
-            clean_session = self._session_value(session_id)
-            values = self._prompt_values(
+            with self._prepare_turn(
+                prompt=prompt,
+                images=images,
                 model=selected_model,
-                session_id=clean_session,
+                session_id=session_id,
                 resume_last=resume_last,
-            )
-            turn = self._turn(clean_session)
-            relay = _CancellationRelay(cancel_event, token)
-            if self._adapter.spec.transport is TransportKind.JSONL:
-                async for message in self._aiter_jsonl_messages(
-                    prompt, values, turn, token
-                ):
-                    token.raise_if_cancelled()
-                    yield message
-            else:
-                loop = asyncio.get_running_loop()
-                worker = loop.run_in_executor(
-                    None,
-                    lambda: self._one_shot_messages(
-                        prompt, values, turn, token
-                    ),
-                )
-                try:
-                    messages = await asyncio.shield(worker)
-                except asyncio.CancelledError:
-                    token.cancel()
+            ) as (prepared_prompt, values, turn):
+                relay = _CancellationRelay(cancel_event, token)
+                if self._adapter.spec.transport is TransportKind.JSONL:
+                    async for message in self._aiter_jsonl_messages(
+                        prepared_prompt, values, turn, token
+                    ):
+                        token.raise_if_cancelled()
+                        yield message
+                else:
+                    loop = asyncio.get_running_loop()
+                    worker = loop.run_in_executor(
+                        None,
+                        lambda: self._one_shot_messages(
+                            prepared_prompt, values, turn, token
+                        ),
+                    )
                     try:
-                        await asyncio.shield(worker)
-                    except ExtensionError:
-                        pass
-                    raise
-                for message in messages:
-                    token.raise_if_cancelled()
-                    yield message
-                turn.finish()
-            token.raise_if_cancelled()
+                        messages = await asyncio.shield(worker)
+                    except asyncio.CancelledError:
+                        token.cancel()
+                        try:
+                            await asyncio.shield(worker)
+                        except ExtensionError:
+                            pass
+                        raise
+                    for message in messages:
+                        token.raise_if_cancelled()
+                        yield message
+                    turn.finish()
+                token.raise_if_cancelled()
             succeeded = True
             self._record_success(provider_id, selected_model, turn, started)
         except asyncio.CancelledError:
@@ -1589,7 +1656,7 @@ class _AdapterPluginRuntime:
                 max_stream_buffer_bytes=request.max_stream_buffer_bytes,
                 max_stream_events=request.max_stream_events,
                 max_stream_line_bytes=request.max_stream_line_bytes,
-                web_search=False,
+                web_search=request.web_search,
                 first_output_timeout=None,
             )
 

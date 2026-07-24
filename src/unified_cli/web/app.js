@@ -84,7 +84,8 @@ const messages = {
     noUsage: "No usage rows match these filters.", calls: "calls", errors: "errors", success: "Success",
     error: "Error", chatStarting: "Starting secure stream…", chatStreaming: "Streaming…",
     chatDone: "Response complete", chatCancelled: "Chat cancelled", chatFailed: "Chat failed",
-    chatPreviewWarning: "Ext Preview runs only when you press Send. The selected local adapter remains read-only, and image input is unavailable.",
+    chatPreviewWarning: "Extension providers run only when you press Send and remain read-only in browser chat.",
+    imageUnavailable: "Image input is unavailable for this provider.",
     promptRequired: "Enter a prompt.", selectionRequired: "Select a provider and workspace.",
     imageRejected: "Some images were rejected by the file limits.", removeImage: "Remove image",
     session: "Session", reasoningSummary: "Reasoning summary", toolStarted: "Started",
@@ -165,7 +166,8 @@ const messages = {
     noUsage: "필터에 맞는 사용량 행이 없습니다.", calls: "호출", errors: "오류", success: "성공",
     error: "오류", chatStarting: "보안 스트림 시작 중…", chatStreaming: "스트리밍 중…",
     chatDone: "응답 완료", chatCancelled: "채팅 취소됨", chatFailed: "채팅 실패",
-    chatPreviewWarning: "Ext Preview는 보내기를 누를 때만 실행됩니다. 선택한 로컬 어댑터는 읽기 전용이며 이미지 입력은 사용할 수 없습니다.",
+    chatPreviewWarning: "확장 Provider는 보내기를 누를 때만 실행되며 브라우저 채팅에서는 읽기 전용으로 동작합니다.",
+    imageUnavailable: "이 Provider는 이미지 입력을 지원하지 않습니다.",
     promptRequired: "프롬프트를 입력하세요.", selectionRequired: "제공자와 작업공간을 선택하세요.",
     imageRejected: "파일 제한으로 일부 이미지가 거부되었습니다.", removeImage: "이미지 제거",
     session: "세션", reasoningSummary: "추론 요약", toolStarted: "시작됨",
@@ -395,8 +397,9 @@ function normalizeProvider(value, fallbackId = "") {
     chat_supported: value.chat_supported === true,
     verify_supported: value.verify_supported === true,
     models_supported: value.models_supported === true,
+    images_supported: value.images_supported === true,
     default_supported: isCore && value.default_supported === true,
-    metadata_only: isExtension
+    metadata_only: value.metadata_only === true
   };
   if (isCore) {
     const commands = isRecord(value.commands) ? value.commands : {};
@@ -563,8 +566,15 @@ function renderProviders() {
     const card = makeElement("article", "provider-card");
     const header = makeElement("header");
     const title = makeElement("div");
+    const supportStatus = textValue(
+      provider.support_status, t("unknown"), 32
+    );
     const subtitle = provider.source === "extension"
-      ? `${t("previewWarning")} · ${textValue(provider.support_status, t("unknown"), 32)}`
+      ? (
+        provider.support_status === "preview"
+          ? `${t("previewWarning")} · ${supportStatus}`
+          : `${t("ext")} · ${supportStatus}`
+      )
       : "CLI provider";
     title.append(makeElement("h3", "", name), makeElement("p", "muted", subtitle));
     header.append(title, providerBadge(provider));
@@ -645,8 +655,11 @@ function populateProviderOptions() {
     state.providers.forEach((provider) => {
       const id = providerId(provider);
       if (!id) return;
+      const extensionLabel = provider.support_status === "stable"
+        ? "Ext Stable"
+        : "Ext Preview";
       const name = provider.source === "extension"
-        ? `${providerName(provider)} (Ext Preview)`
+        ? `${providerName(provider)} (${extensionLabel})`
         : providerName(provider);
       const option = makeElement("option", "", name);
       option.value = id;
@@ -654,7 +667,26 @@ function populateProviderOptions() {
       if (select.id === "models-provider") option.disabled = provider.models_supported !== true;
       select.append(option);
     });
-    if (Array.from(select.options).some((option) => option.value === current)) select.value = current;
+    const defaultProvider = select.id === "usage-provider"
+      ? ""
+      : textValue(
+        isRecord(state.bootstrap.defaults)
+          ? state.bootstrap.defaults.provider
+          : "",
+        ""
+      );
+    const preferred = current || defaultProvider;
+    const preferredOption = Array.from(select.options).find(
+      (option) => option.value === preferred && !option.disabled
+    );
+    if (preferredOption) {
+      select.value = preferred;
+    } else if (select.id !== "usage-provider") {
+      const firstEnabled = Array.from(select.options).find(
+        (option) => option.value && !option.disabled
+      );
+      if (firstEnabled) select.value = firstEnabled.value;
+    }
   });
   updateChatProviderControls(byId("chat-provider").value);
   populateSettingsOptions();
@@ -714,12 +746,11 @@ function validBootstrap(data) {
     if (core && (provider.status !== "builtin" || provider.support_status !== "stable")) return false;
     if (extension && (!["discovered", "loaded"].includes(provider.status)
         || !EXT_SUPPORT_STATUSES.has(provider.support_status))) return false;
-    if (["chat_supported", "verify_supported", "models_supported", "default_supported", "metadata_only"].some((key) => typeof provider[key] !== "boolean")) return false;
+    if (["chat_supported", "verify_supported", "models_supported", "images_supported", "default_supported", "metadata_only"].some((key) => typeof provider[key] !== "boolean")) return false;
     if (extension && (typeof provider.chat_supported !== "boolean"
         || typeof provider.verify_supported !== "boolean"
         || typeof provider.models_supported !== "boolean"
-        || provider.default_supported !== false
-        || provider.metadata_only !== true)) return false;
+        || provider.default_supported !== false)) return false;
     if (core && provider.metadata_only !== false) return false;
     if (!Array.isArray(provider.capabilities) || provider.capabilities.length > 64
         || provider.capabilities.some((item) => typeof item !== "string" || item.length > 64 || !CAPABILITY_ID_PATTERN.test(item))) return false;
@@ -728,14 +759,23 @@ function validBootstrap(data) {
         || typeof provider.server_policy.requires_external_isolation !== "boolean") return false;
     if (extension && (provider.server_policy.enabled !== false
         || provider.server_policy.requires_external_isolation !== true)) return false;
-    if (provider.status === "discovered") {
-      if (provider.support_status !== "preview" || provider.default_model !== null
-          || provider.capabilities.length !== 0) return false;
-    } else if (provider.support_status === "held") {
-      if (provider.default_model !== null || provider.capabilities.length !== 0) return false;
-    } else if (typeof provider.default_model !== "string" || !provider.default_model
-        || provider.default_model.length > 512 || provider.default_model !== provider.default_model.trim()
-        || UNSAFE_PROVIDER_TEXT_PATTERN.test(provider.default_model)) return false;
+    const validDefaultModel = provider.default_model === null
+      || (typeof provider.default_model === "string" && provider.default_model
+        && provider.default_model.length <= 512
+        && provider.default_model === provider.default_model.trim()
+        && !UNSAFE_PROVIDER_TEXT_PATTERN.test(provider.default_model));
+    if (!validDefaultModel) return false;
+    if (provider.support_status === "held") {
+      if (provider.default_model !== null || provider.capabilities.length !== 0
+          || provider.metadata_only !== true || provider.chat_supported) return false;
+    } else if (provider.status === "discovered"
+        && !["stable", "preview"].includes(provider.support_status)) return false;
+    if (extension && provider.chat_supported
+        && (provider.metadata_only || !provider.capabilities.includes("chat")
+          || provider.default_model === null)) return false;
+    if (extension && !provider.chat_supported && !provider.metadata_only) return false;
+    if (provider.images_supported
+        && (!provider.chat_supported || !provider.capabilities.includes("images"))) return false;
     if (extension && (Object.hasOwn(provider, "commands")
         || Object.hasOwn(provider, "install_command") || Object.hasOwn(provider, "login_command")
         || Object.hasOwn(provider, "error"))) return false;
@@ -1216,14 +1256,17 @@ function updateChatProviderControls(providerIdValue) {
     (item) => providerId(item) === providerIdValue
   );
   const extension = Boolean(provider && provider.source === "extension");
+  const imagesSupported = Boolean(provider && provider.images_supported === true);
   const warning = byId("chat-preview-warning");
-  warning.hidden = !extension;
+  warning.hidden = !(
+    extension && provider.support_status === "preview"
+  );
   const picker = byId("image-picker");
-  picker.disabled = extension;
-  byId("image-limit").textContent = extension
-    ? t("chatPreviewWarning")
-    : t("imageLimit");
-  if (extension) releaseImages();
+  picker.disabled = !imagesSupported;
+  byId("image-limit").textContent = imagesSupported
+    ? t("imageLimit")
+    : t("imageUnavailable");
+  if (!imagesSupported) releaseImages();
 }
 
 function sessionItems(value) {

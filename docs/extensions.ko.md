@@ -1,16 +1,16 @@
 # 확장
 
-확장은 `unified-cli` 0.5.3 배포판에 Core와 함께 들어 있습니다. 하나의 wheel에
+확장은 `unified-cli` 0.5.4 배포판에 Core와 함께 들어 있습니다. 하나의 wheel에
 `unified_cli`와 `unified_cli_ext` 공개 namespace가 모두 포함됩니다. Core는 기존 기본값으로
 Claude, Codex, Gemini(`agy`)만 계속 지원합니다. 확장은 패키지 경계가 아니라 기능 경계이므로,
 사용해도 이 기본값을 바꾸지 않고 Core의 로컬 서버 허용 목록에 확장을 추가하지 않으며 vendor
 소프트웨어를 설치하거나 설정하지 않습니다.
 
-함께 제공되는 확장은 명시적인 provider 엔트리포인트와 실행 코드가 있는 **Preview**
-adapter 18개를 제공합니다. Grok Build는 오프라인 fixture와 대표 인증 native smoke로
-검증했습니다. 나머지는 공통 transport fixture를 검증했고 명시적으로 선택할 때만 실행을
-시도합니다. vendor CLI·계정 호환성은 보장하지 않습니다. 공개 Core `/v1/*` server
-route에서 활성화된 Ext provider는 없습니다.
+함께 제공되는 확장은 명시적인 provider 엔트리포인트와 실행 adapter 18개를 제공합니다.
+Grok은 macOS 2026-07-23, OpenCode는 macOS 2026-07-24 실사용 검증으로 Stable입니다.
+나머지 16개는 공식 CLI 설치·로그인·설정 후 실행되는 Preview adapter입니다. Preview는
+metadata-only/차단 상태가 아니라 provider별 E2E가 아직 검증되지 않았다는 뜻입니다.
+공개 Core `/v1/*` server route에서 활성화된 Ext provider는 없습니다.
 
 vendor 바이너리, 계정, 구독, 업데이트는 모두 사용자가 소유하고 관리합니다. Ext 설치만으로
 vendor CLI 설치, 로그인, 서비스 호출, 과금 발생이 일어나지 않습니다. Ext는 아래 vendor와
@@ -19,7 +19,7 @@ vendor CLI 설치, 로그인, 서비스 호출, 과금 발생이 일어나지 �
 ## 설치 및 확인
 
 ```bash
-python -m pip install "unified-cli==0.5.3"
+python -m pip install "unified-cli==0.5.4"
 python -c "import unified_cli_ext; print(unified_cli_ext.__name__)"
 unified-cli providers --include-ext
 ```
@@ -28,29 +28,20 @@ Python 명령은 함께 설치된 확장 namespace의 import만 확인하고, `p
 엔트리포인트 메타데이터를 표시합니다. 어느 명령도 vendor 설치, 인증 상태, 서비스
 가용성을 확인하지 않습니다.
 
-개발자나 테스터가 레거시 로컬 wheel 또는 실패한 분리 wheel을 설치했다면, 계획된 통합
-릴리스를 설치하기 전에 다음과 같이 복구하세요.
-
-```bash
-python -m pip uninstall -y unified-cli-ext
-python -m pip install --force-reinstall "unified-cli==0.5.3"
-```
-
 Core는 import 없이 엔트리포인트를 탐색합니다. `unified-cli providers
---include-ext`는 모듈을 import하지 않고 bundled 항목을 수명 주기 `discovered`,
-지원 상태 `preview`로 표시합니다. 명시적인 provider 요청이 있을 때만 해당
-엔트리포인트 하나를 로드합니다. 18개 항목에는 모두 실행 코드가 있는 Preview adapter가
-있습니다. 2026-07-23 무자격증명 랩에서 현재 공식 설치본 13개는 `create()`까지
-통과했습니다. Cursor, Hermes, Mistral Vibe, Qoder는 제한된 호환성 오류를 반환했고,
-Poolside는 EULA 동의가 필요해 설치하지 않았습니다.
-[무자격증명 랩 근거](development/ext-accountless-live-lab-2026-07-23.md)를 참고하세요.
-Grok은 명시적으로 선택한 로컬 바이너리가 정확한 `0.2.111` 버전과 제한된 기능 probe를
-통과해야만 계속 실행됩니다. 모든 Ext provider는 공개 `/v1/*` route에서 계속 비활성입니다.
+--include-ext`는 Grok/OpenCode를 실사용 검증된 Stable로, 나머지 16개를 callback-free
+`discovered`/`preview`로 표시합니다. 명시적인 provider 요청이 있을 때만 해당
+엔트리포인트 하나를 로드합니다. Python `create()`/CLI/REPL은 18개 전부 실행할 수 있지만
+browser chat은 고정된 안전 읽기 전용 mapping이 있는 경우로 더 좁습니다. OpenCode는
+합쳐지는 원격/시스템 MCP 설정을 완전히 끄는 방법이 없어 browser chat만 비활성이고
+Python/CLI/REPL은 활성입니다. 모델 갱신은 필요할 때만 `unified-cli models PROVIDER
+--refresh` 또는 REPL `/model --refresh`를 사용하세요. 실패하면 정제한 로그/진단을
+issue로 보내 주세요. 모든 Ext provider는 공개 `/v1/*` route에서 계속 비활성입니다.
 
-## Grok Preview 설정 및 경계
+## Grok Stable 설정 및 경계
 
 일반 설정은 짧습니다. `configure`가 공식 실행 파일을 검증하고 검토된 격리 설정과
-실행 영수증을 만든 뒤, vendor 공식 로그인이 해당 격리 home에만 인증을 저장합니다.
+실행 영수증을 만든 뒤, vendor 공식 로그인이 해당 격리 home에 인증을 저장할 수 있습니다.
 
 ```bash
 curl -fsSL https://x.ai/cli/install.sh | bash
@@ -70,8 +61,10 @@ client = create("grok", cwd=str(Path.cwd().resolve()))
 print(client.chat("이 저장소를 설명해줘").text)
 ```
 
-일반 사용자 `~/.grok` 인증은 복사하지 않습니다. 로그인이 없으면 Python과 CLI가
-격리 로그인 안내와 함께 안전하게 정리된 `auth_expired` 오류를 반환합니다.
+일반 사용자 `~/.grok/auth.json`은 wrapper가 읽거나 복사하지 않습니다. 소유자 전용
+메타데이터가 안전하면 공식 CLI에 `GROK_AUTH_PATH` 경로만 전달하고, 없으면 위 격리
+로그인을 사용합니다. 로그인이 없으면 Python과 CLI는 정제된 `auth_expired` 오류를
+반환합니다.
 
 <details>
 <summary>native snapshot 수동 검증 참고 자료</summary>
@@ -79,9 +72,9 @@ print(client.chat("이 저장소를 설명해줘").text)
 아래 긴 절차는 자동으로 수행되는 검사를 문서화한 것으로, 검토된 macOS arm64
 snapshot을 감사하는 maintainer용입니다.
 
-Grok Build Preview는 실행 가능한 Ext provider 중 하나입니다. 기본 공식 native 설치 경로는
+Grok Build는 Stable Ext provider입니다. 기본 공식 native 설치 경로는
 `https://x.ai/cli/install.sh`입니다. 공식 npm 패키지 `@xai-official/grok`도 vendor 대안이지만
-이 0.1 Preview 설정 절차는 native 설치 구조만 사용합니다.
+이 Stable native 경로는 native 설치 구조만 사용합니다.
 알려진 관련 없는 `@vibe-kit/grok-cli` CLI 형태는 거부합니다. 검토한 버전은 정확히
 `0.2.111`뿐이며 다른 버전은 fail closed합니다. 검증된 플랫폼은 macOS arm64뿐입니다.
 vendor 설치 프로그램을 일반 사용자 home에서 실행한 뒤 아래 fail-closed 절차를
@@ -369,20 +362,18 @@ Ext는 명시적으로 선택한 로컬 실행 파일이나 npm launcher의 파�
 | Stable | 문서화된 호환성 근거가 있는 출시·지원 통합입니다. |
 | Preview | 제한 사항을 문서화하며 평가 중인 활성화된 통합입니다. |
 
-18개 카탈로그 항목에는 모두 실행 코드가 있는 **Preview** adapter가 있고 명시적으로
-선택할 때만 실행을 시도합니다. 현재 무자격증명 랩에서는 13/18이 `create()`를 통과했고,
-호환성 제한 4개와 EULA로 설치하지 않은 1개를 위에 기록했습니다. Grok에는 대표 인증
-실사용 근거가 있고, 나머지는 공통 transport fixture를 검증했지만 vendor·계정 호환성을
+Grok과 OpenCode는 macOS 실사용 검증(각각 2026-07-23/24)을 거친 Stable 통합입니다.
+나머지 16개 카탈로그 항목은 공식 CLI 설치·로그인·설정 후 명시적으로 선택하면 실행되는
+Preview adapter이며 이름만 있는 목록이 아닙니다. Preview는 vendor·계정 호환성을
 보장하지 않습니다. 모든 Ext 공개 서버 정책은 비활성이라 공개 호환 `/v1/*`
-경로는 Core 전용으로 유지됩니다. 다만 loopback 전용 `serve --manage` UI에서는 등록한
-workspace와 명시적으로 선택한 Ext provider를 같은 Python `create()` 경로로 실행할 수
-있습니다.
+경로는 Core 전용으로 유지됩니다. loopback 전용 `serve --manage` UI는 등록한
+workspace에서 감사된 browser-safe Ext 일부만 같은 Python `create()` 경로로 실행합니다.
+OpenCode는 Python/CLI/REPL에서는 활성이나 상속 MCP 시작을 완전히 끌 수 있을 때까지
+browser chat에서는 제외됩니다.
 
-OpenCode Go도 2026-07-24 인증 계정으로 실사용 확인했습니다. 공식 CLI 자체는 모델
-새로고침·채팅·로컬 도구·웹 검색·합성 이미지를 통과했지만, unified-cli는 공식
-Homebrew 설치본을 provenance binding에서 거부해 Python·REPL·Browser 호출이
-실패했습니다. 따라서 OpenCode는 Preview를 유지합니다.
-[실사용 테스트 표](development/opencode-go-live-smoke-2026-07-24.md)를 참고하세요.
+Grok은 도구가 실행돼도 명시적 tool timeline이 표시되지 않을 수 있습니다. OpenCode는
+너무 작거나 유효하지 않은 이미지를 vendor가 거부할 수 있습니다.
+[OpenCode 실사용 테스트 표](development/opencode-go-live-smoke-2026-07-24.md)를 참고하세요.
 
 ## 생성된 provider 지원 상태
 
@@ -399,13 +390,13 @@ Homebrew 설치본을 provenance binding에서 거부해 Python·REPL·Browser �
 | `cursor` | `preview` | `chat` | `disabled` |
 | `droid` | `preview` | `chat, stream` | `disabled` |
 | `gitlab-duo` | `preview` | `chat` | `disabled` |
-| `grok` | `preview` | `chat, sessions, stream` | `disabled` |
+| `grok` | `stable` | `chat, images, sessions, stream, tools` | `disabled` |
 | `hermes` | `preview` | `chat` | `disabled` |
 | `kilo` | `preview` | `chat` | `disabled` |
 | `kimi` | `preview` | `chat` | `disabled` |
 | `mistral-vibe` | `preview` | `chat` | `disabled` |
 | `oh-my-pi` | `preview` | `chat, stream` | `disabled` |
-| `opencode` | `preview` | `chat` | `disabled` |
+| `opencode` | `stable` | `chat, images, sessions, stream, tools` | `disabled` |
 | `pi` | `preview` | `chat, stream` | `disabled` |
 | `poolside` | `preview` | `chat` | `disabled` |
 | `qoder` | `preview` | `chat` | `disabled` |
@@ -435,7 +426,7 @@ fixture로 검증한 Preview adapter이며 vendor별 CLI·계정 조합을 모�
 | `mistral-vibe` | Mistral Vibe (`vibe`, `mistral-vibe`) | JSONL 메시지 스트림 후보 | `chat` 후보; Core capability 없음 | Held | 업데이트 확인을 끈 전용 설정 후보; direct와 `vibe-acp` 경로를 따로 검증해야 함 | [설치](https://docs.mistral.ai/getting-started/quickstarts/vibe-code/install-cli) · [CLI 사용](https://docs.mistral.ai/vibe/code/cli/work-with-cli) · [ACP surface](https://docs.mistral.ai/vibe/code/choose-cli-vscode-web-sessions) |
 | `qwen` | Qwen Code (`qwen`, `@qwen-code/qwen-code`) | JSONL 후보 | `chat` 후보; Core capability 없음 | Held | backend 선택, 자격 정보, 업데이트 동작, event schema 검증 필요 | [저장소](https://github.com/QwenLM/qwen-code) · [Headless mode](https://qwenlm.github.io/qwen-code-docs/en/users/features/headless/) · [인증](https://qwenlm.github.io/qwen-code-docs/en/users/configuration/auth/) |
 | `cline` | Cline CLI (`cline`) | JSONL 후보; ACP는 별도 후보 | `chat` 후보; Core capability 없음 | Held | 후보 `CLINE_NO_AUTO_UPDATE=1`; stdin EOF, event schema, 로컬 설정 격리 검증 필요 | [CLI 개요](https://docs.cline.bot/usage/cli-overview) · [CLI reference](https://docs.cline.bot/cli/cli-reference) · [릴리스 소스](https://github.com/cline/cline/tree/cli-v3.0.46/apps/cli) |
-| `opencode` | OpenCode (`opencode`, 패키지 `opencode-ai`) | `JSONL one-shot` 후보 | `chat` 후보; Core capability 없음 | Held | 2026-07-24 인증된 Go smoke에서 vendor CLI 자체는 통과했으나 현재 adapter는 공식 Homebrew Cellar 경로를 provenance binding에서 거부함. Python/REPL 호출 실패, Browser Verify/Models HTTP 502, Browser Chat 비활성 상태이며 모델·이미지·웹·도구·세션 전달도 미완성 | [문서](https://opencode.ai/docs/) · [CLI](https://opencode.ai/docs/cli/) · [서버](https://opencode.ai/docs/server/) · [실사용 표](development/opencode-go-live-smoke-2026-07-24.md) |
+| `opencode` | OpenCode (`opencode`, 패키지 `opencode-ai`) | `JSONL one-shot` 후보 | 과거 `chat` 후보 | Held | 0.5.4 이전 기록: Homebrew provenance와 forwarding이 미완성이었습니다. 현재는 모델·이미지·웹·도구·세션을 실사용 검증한 Stable Python/CLI/REPL adapter로 대체되었습니다. 상속되는 원격/시스템 MCP 시작을 확실히 끌 수 있을 때까지 browser chat만 비활성입니다. | [문서](https://opencode.ai/docs/) · [CLI](https://opencode.ai/docs/cli/) · [서버](https://opencode.ai/docs/server/) · [실사용 표](development/opencode-go-live-smoke-2026-07-24.md) |
 | `kilo` | Kilo Code (`kilo`, 패키지 `@kilocode/cli`) | `내부 loopback 서버가 있는 ACP stdio` | 명시적 `chat`; Core 서버 비활성 | Experimental | 제한된 ACP loopback/프로세스/config/권한 제어로 실행 가능하나 동작이 바뀔 수 있음 | [CLI](https://kilo.ai/docs/code-with-ai/platforms/cli) · [CLI reference](https://kilo.ai/docs/code-with-ai/platforms/cli-reference) · [릴리스](https://github.com/Kilo-Org/kilocode/releases/tag/v7.4.11) |
 | `droid` | Factory Droid (`droid`, npm 패키지 `droid`) | vendor stream JSON-RPC 후보 | `chat` 후보; Core capability 없음 | Held | 후보 업데이트 제어, 프로토콜 envelope, 권한 흐름, 프로세스 수명 주기는 Stage 6 검증 필요 | [CLI reference](https://docs.factory.ai/reference/cli-reference) · [Droid Exec](https://docs.factory.ai/cli/droid-exec/overview) · [패키지 메타데이터](https://registry.npmjs.org/droid/latest) |
 | `pi` | Pi Coding Agent (`pi`, 패키지 `@earendil-works/pi-coding-agent`) | 전용 NDJSON RPC 후보 | `chat` 후보; Core capability 없음 | Held | 후보 `--offline`과 resource 비활성 플래그는 Stage 6 검증 필요; JSON-RPC는 아님 | [패키지](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/package.json) · [README](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/README.md) · [RPC](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/rpc.md) |

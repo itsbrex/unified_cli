@@ -22,9 +22,11 @@ from .repl_commands import CommandSpec, DEFAULT_REGISTRY
 _PROVIDERS = ("claude", "codex", "gemini")
 # This Core-owned metadata API validates the packaged entry-point names and
 # targets without enumerating installed distributions or importing providers.
-BUNDLED_EXTENSION_PROVIDERS = tuple(
-    descriptor.id for descriptor in passive_bundled_provider_descriptors()
-)
+_BUNDLED_EXTENSION_DESCRIPTORS = {
+    descriptor.id: descriptor
+    for descriptor in passive_bundled_provider_descriptors()
+}
+BUNDLED_EXTENSION_PROVIDERS = tuple(_BUNDLED_EXTENSION_DESCRIPTORS)
 
 
 # ---------- slash command registry (single source of truth) ----------
@@ -104,6 +106,9 @@ def slash_candidates(token: str) -> list:
 def _provider_meta(provider: str) -> str:
     if provider == "gemini" and not gemini_enabled():
         return t("repl.picker.locked_suffix").strip()
+    descriptor = _BUNDLED_EXTENSION_DESCRIPTORS.get(provider)
+    if descriptor is not None and descriptor.support_status == "stable":
+        return t("repl.picker.ext_stable_suffix").strip()
     if provider not in _PROVIDERS:
         return t("repl.picker.ext_preview_suffix").strip()
     return ""
@@ -521,7 +526,8 @@ def _pick_provider_from_snapshots(choices: Sequence[str]) -> Optional[str]:
         if candidate not in providers and _safe_provider_id(candidate):
             providers.append(candidate)
     for p in providers:
-        label = p + (t("repl.picker.locked_suffix") if _provider_meta(p) else "")
+        meta = _provider_meta(p)
+        label = p + (" " + meta if meta else "")
         values.append((p, label))
     return radiolist_dialog(
         title=t("repl.picker.provider_title"),

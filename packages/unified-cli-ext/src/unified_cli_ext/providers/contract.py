@@ -318,6 +318,7 @@ class DynamicArgument:
     name: str
     flag: str
     required: bool = False
+    repeatable: bool = False
 
     def __post_init__(self) -> None:
         if type(self.name) is not str or _ARGUMENT_NAME_RE.fullmatch(self.name) is None:
@@ -333,6 +334,8 @@ class DynamicArgument:
             raise ConfigurationError("dynamic argument flag must be a short or long option")
         if type(self.required) is not bool:
             raise ConfigurationError("dynamic argument required marker must be bool")
+        if type(self.repeatable) is not bool:
+            raise ConfigurationError("dynamic argument repeatable marker must be bool")
 
 
 @dataclass(frozen=True)
@@ -416,7 +419,7 @@ class PromptCommandSpec:
         self,
         binary_path: str,
         prompt: str,
-        values: Optional[Mapping[str, str]] = None,
+        values: Optional[Mapping[str, Union[str, Tuple[str, ...]]]] = None,
     ) -> BuiltPromptInvocation:
         binary = _safe_text(
             binary_path,
@@ -459,14 +462,29 @@ class PromptCommandSpec:
                 if argument.required:
                     raise ConfigurationError("required prompt option is missing")
                 continue
-            clean = _safe_text(
-                value,
-                label="prompt option value",
-                maximum=16 * 1024,
-                empty=False,
-                newlines=False,
-            )
-            argv.extend((argument.flag, clean))
+            if argument.repeatable:
+                if type(value) is not tuple or not value or len(value) > 16:
+                    raise ConfigurationError(
+                        "repeatable prompt option value is invalid"
+                    )
+                for item in value:
+                    clean = _safe_text(
+                        item,
+                        label="prompt option value",
+                        maximum=16 * 1024,
+                        empty=False,
+                        newlines=False,
+                    )
+                    argv.extend((argument.flag, clean))
+            else:
+                clean = _safe_text(
+                    value,
+                    label="prompt option value",
+                    maximum=16 * 1024,
+                    empty=False,
+                    newlines=False,
+                )
+                argv.extend((argument.flag, clean))
         if self.mode is PromptMode.POSITIONAL_AFTER_SENTINEL:
             argv.extend(("--", clean_prompt))
             return BuiltPromptInvocation(tuple(argv), None, None)

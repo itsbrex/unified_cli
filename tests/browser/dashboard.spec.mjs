@@ -55,7 +55,8 @@ function waitForExit(child) {
 }
 
 test.beforeAll(async () => {
-  fixture = spawn(process.env.PYTHON || "python", ["tests/browser/fake_server.py"], {
+  const python = process.env.PYTHON || (process.platform === "win32" ? "python" : "python3");
+  fixture = spawn(python, ["tests/browser/fake_server.py"], {
     cwd: root,
     env: { ...process.env, PYTHONPATH: path.join(root, "src") },
     stdio: ["ignore", "pipe", "pipe"]
@@ -107,7 +108,7 @@ test("managed dashboard is accessible, localized, and console-clean", async ({ p
   await expect(page.locator('#models-provider option[value="preview-ext"]')).toHaveAttribute("disabled", "");
   await expect(page.locator('#chat-provider option[value="preview-ext"]')).toHaveAttribute("disabled", "");
   await expect(page.locator('#chat-provider option[value="grok"]')).toBeEnabled();
-  await expect(page.locator('#chat-provider option[value="grok"]')).toContainText("Ext Preview");
+  await expect(page.locator('#chat-provider option[value="grok"]')).toContainText("Ext Stable");
   await expect(page.locator('#setting-default-provider option[value="preview-ext"]')).toHaveCount(0);
   await page.reload();
   await expect(page.locator("#overview-mode")).toHaveText("Manage mode");
@@ -138,8 +139,8 @@ test("managed dashboard is accessible, localized, and console-clean", async ({ p
   );
   expect(fileFocusVisible).toBeTruthy();
   await page.locator("#chat-provider").selectOption("grok");
-  await expect(page.locator("#chat-preview-warning")).toBeVisible();
-  await expect(page.locator("#image-picker")).toBeDisabled();
+  await expect(page.locator("#chat-preview-warning")).toBeHidden();
+  await expect(page.locator("#image-picker")).toBeEnabled();
 
   await page.getByRole("button", { name: "Sessions", exact: true }).click();
   await page.getByRole("button", { name: "Refresh sessions" }).click();

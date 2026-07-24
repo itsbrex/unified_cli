@@ -1,20 +1,37 @@
-"""Read-only Preview adapter for the official xAI Grok Build CLI."""
+"""Read-only Stable adapter for the official xAI Grok Build CLI."""
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import json
 import os
 import platform
 import shutil
 import stat
 import sys
 from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import replace
 from types import MappingProxyType
+from typing import Any, Iterator, Optional, Tuple
 
-from ..errors import ConfigurationError, ProtocolError
+from unified_cli.core import ModelInfo
+from unified_cli.plugin import (
+    PROVIDER_CONFIGURATION_ABI_V1,
+    ProviderPluginV1,
+    ProviderServerPolicyV1,
+)
+
+from ..errors import ConfigurationError, ExtensionError, ProtocolError
 from ..transports.security import private_persistent_home
-from .bridge import adapter_plugin
+from .bridge import (
+    AdapterPromptValueV1,
+    AdapterProviderBridge,
+    _AdapterPluginRuntime,
+    _effective_limits,
+    _validated_model_id,
+)
 from .contract import (
     AdapterServerPolicy,
     AdapterStatus,
@@ -36,6 +53,13 @@ from .contract import (
 )
 from .installation import InstallationReceiptV1
 from .path_resolver import resolve_path_installation
+from .rich_cli import (
+    normalized_image_payloads,
+    private_invocation_directory,
+    run_provider_command,
+    write_private_file,
+)
+from .runtime import AdapterInspectionV1, BinaryProvenance, ProviderAdapterV1
 
 
 GROK_OFFICIAL_SOURCES = (
@@ -56,6 +80,7 @@ GROK_REAL_SMOKE_PLATFORM = "macos-aarch64"
 GROK_REAL_SMOKE_DATE = "2026-07-23"
 GROK_NATIVE_SHA256 = "e1fafdfffe14f339460befaf194360e8f90bfd02efe8a4f24cfa1c7aea657ffe"
 GROK_NATIVE_SNAPSHOT = "native-0.2.111-darwin-arm64-e1fafdfffe14"
+GROK_SANDBOX_PROFILE = "unified-cli-strict"
 GROK_SAFE_CONFIG = """[cli]
 auto_update = false
 
@@ -190,15 +215,11 @@ def _command(*argv: str) -> FixedCommandSpec:
 GROK_HEADLESS_FIXED_ARGV = (
     "--no-auto-update",
     "--sandbox",
-    "strict",
+    GROK_SANDBOX_PROFILE,
     "--permission-mode",
     "dontAsk",
     "--tools",
     "read_file,grep,list_dir",
-    "--allow",
-    "Read",
-    "--allow",
-    "Grep",
     "--deny",
     "Bash",
     "--deny",
@@ -217,11 +238,36 @@ GROK_HEADLESS_FIXED_ARGV = (
     "streaming-json",
 )
 
+GROK_WEB_HEADLESS_FIXED_ARGV = (
+    "--no-auto-update",
+    "--sandbox",
+    GROK_SANDBOX_PROFILE,
+    "--permission-mode",
+    "dontAsk",
+    "--tools",
+    "read_file,grep,list_dir,web_search,web_fetch",
+    "--allow",
+    "WebSearch",
+    "--allow",
+    "WebFetch",
+    "--deny",
+    "Bash",
+    "--deny",
+    "Edit",
+    "--deny",
+    "MCPTool",
+    "--no-plan",
+    "--no-subagents",
+    "--no-memory",
+    "--output-format",
+    "streaming-json",
+)
+
 
 ADAPTER_SPEC = ProviderAdapterSpecV1(
     id="grok",
     display_name="xAI Grok Build",
-    status=AdapterStatus.PREVIEW,
+    status=AdapterStatus.STABLE,
     binary=BinarySpec(
         executable="grok",
         expected_identity="grok",
@@ -230,18 +276,22 @@ ADAPTER_SPEC = ProviderAdapterSpecV1(
             minimum_version=(0, 2, 111),
             format=ProbeFormat.PLAIN_TEXT,
             version_marker="grok ",
-            identity_marker="grok 0.2.111 ",
+            identity_marker="grok ",
             version_is_first_token=True,
             identity_prefix=True,
         ),
         feature_probe=FeatureProbeSpec(
             _command("--help"),
-            required_features=frozenset(("chat", "sessions", "stream")),
+            required_features=frozenset(
+                ("chat", "sessions", "stream", "tools", "images")
+            ),
             format=ProbeFormat.PLAIN_TEXT,
             feature_markers={
                 "chat": "-p, --single",
                 "sessions": "-r, --resume",
                 "stream": "--output-format",
+                "tools": "--tools",
+                "images": "--prompt-json",
             },
             identity_marker="Usage: grok",
             marker_prefixes=True,
@@ -253,9 +303,21 @@ ADAPTER_SPEC = ProviderAdapterSpecV1(
         dynamic_arguments=(
             DynamicArgument("model", "-m", required=True),
             DynamicArgument("session", "-r"),
+            DynamicArgument(
+                "workspace_permissions",
+                "--allow",
+                required=True,
+                repeatable=True,
+            ),
+            DynamicArgument(
+                "private_state_denials",
+                "--deny",
+                required=True,
+                repeatable=True,
+            ),
         ),
         mode=PromptMode.OPTION_VALUE,
-        prompt_option="-p",
+        prompt_option="--prompt-file",
         limits=_PROMPT_LIMITS,
     ),
     transport=TransportKind.JSONL,
@@ -269,9 +331,37 @@ ADAPTER_SPEC = ProviderAdapterSpecV1(
             ProviderCapability.CHAT.value,
             ProviderCapability.STREAM.value,
             ProviderCapability.SESSIONS.value,
+            ProviderCapability.TOOLS.value,
+            ProviderCapability.IMAGES.value,
         )
     ),
     server_policy=AdapterServerPolicy(enabled=False),
+)
+
+
+def _grok_environment(*, web_search: bool) -> EnvironmentPolicy:
+    values = dict(GROK_FIXED_ENVIRONMENT)
+    values["GROK_WEB_FETCH"] = "1" if web_search else "0"
+    return EnvironmentPolicy(
+        # GROK_HOME and GROK_AUTH_PATH are internal launch values.  They are
+        # overwritten by _active_gate and are intentionally not exposed in
+        # ProviderPluginV1.environment_keys.
+        allowed_keys=frozenset(("XAI_API_KEY", "GROK_HOME", "GROK_AUTH_PATH")),
+        fixed_values=values,
+    )
+
+
+ADAPTER_SPEC = replace(
+    ADAPTER_SPEC,
+    environment=_grok_environment(web_search=False),
+)
+_WEB_ADAPTER_SPEC = replace(
+    ADAPTER_SPEC,
+    prompt=replace(
+        ADAPTER_SPEC.prompt,
+        fixed_argv=GROK_WEB_HEADLESS_FIXED_ARGV,
+    ),
+    environment=_grok_environment(web_search=True),
 )
 
 
@@ -345,7 +435,7 @@ def _prepare_managed_provider_configuration(provider_home: object) -> None:
         pass
     except OSError:
         raise ConfigurationError(
-            "Grok Preview provider config could not be prepared"
+            "Grok provider config could not be prepared"
         ) from None
     _validate_state_directory(
         state_dir,
@@ -363,7 +453,7 @@ def _prepare_managed_provider_configuration(provider_home: object) -> None:
         pass
     except OSError:
         raise ConfigurationError(
-            "Grok Preview provider config could not be prepared"
+            "Grok provider config could not be prepared"
         ) from None
     if descriptor is not None:
         try:
@@ -376,7 +466,7 @@ def _prepare_managed_provider_configuration(provider_home: object) -> None:
                 or stat.S_IMODE(metadata.st_mode) != 0o600
             ):
                 raise ConfigurationError(
-                    "Grok Preview provider config could not be prepared"
+                    "Grok provider config could not be prepared"
                 )
             remaining = memoryview(GROK_SAFE_CONFIG.encode("utf-8"))
             while remaining:
@@ -389,11 +479,12 @@ def _prepare_managed_provider_configuration(provider_home: object) -> None:
             raise
         except OSError:
             raise ConfigurationError(
-                "Grok Preview provider config could not be prepared"
+                "Grok provider config could not be prepared"
             ) from None
         finally:
             os.close(descriptor)
     _validate_safe_config(home)
+    _prepare_managed_sandbox_configuration(home, _credential_path(home))
 
 
 def _hash_descriptor(descriptor: int) -> str:
@@ -552,14 +643,22 @@ def _verified_snapshot_receipt() -> InstallationReceiptV1:
 
 
 def _resolve_grok_installation() -> InstallationReceiptV1:
-    try:
+    launcher = shutil.which(ADAPTER_SPEC.binary.executable)
+    if launcher is None:
+        raise ConfigurationError("official Grok installation was not found")
+    target = os.path.realpath(launcher)
+    if "node_modules" in os.path.normpath(target).split(os.sep):
+        # For an npm launcher, package identity is mandatory. A mismatched
+        # same-name package must fail here and must not fall through to native
+        # direct trust.
         return resolve_path_installation(
             provider_id=ADAPTER_SPEC.id,
             executable=ADAPTER_SPEC.binary.executable,
             package_names=(GROK_OFFICIAL_PACKAGE,),
         )
-    except ConfigurationError:
-        return _verified_snapshot_receipt()
+    # The official native installer is accepted only at the exact
+    # authenticated-smoke version/hash captured above.
+    return _verified_snapshot_receipt()
 
 
 def _validate_state_directory(
@@ -644,7 +743,7 @@ def _validate_safe_config(home: str) -> None:
     path = os.path.join(home, ".grok", "config.toml")
     if not os.path.lexists(path):
         raise ConfigurationError(
-            "Grok Preview provider config must match the safe template"
+            "Grok provider config must match the safe template"
         )
     expected = GROK_SAFE_CONFIG.encode("utf-8")
     try:
@@ -653,12 +752,12 @@ def _validate_safe_config(home: str) -> None:
         )
     except ConfigurationError:
         raise ConfigurationError(
-            "Grok Preview provider config must match the safe template"
+            "Grok provider config must match the safe template"
         ) from None
     try:
         if before.st_size != len(expected):
             raise ConfigurationError(
-                "Grok Preview provider config must match the safe template"
+                "Grok provider config must match the safe template"
             )
         payload = bytearray()
         while len(payload) <= len(expected):
@@ -682,11 +781,11 @@ def _validate_safe_config(home: str) -> None:
             != getattr(after, "st_ctime_ns", int(after.st_ctime * 1e9))
         ):
             raise ConfigurationError(
-                "Grok Preview provider config must match the safe template"
+                "Grok provider config must match the safe template"
             )
     except OSError:
         raise ConfigurationError(
-            "Grok Preview provider config must match the safe template"
+            "Grok provider config must match the safe template"
         ) from None
     finally:
         os.close(descriptor)
@@ -722,6 +821,182 @@ def _validate_auth_state(home: str) -> None:
         os.close(descriptor)
 
 
+def _credential_path(provider_home: str) -> Optional[str]:
+    """Locate official Grok credentials without reading or copying them."""
+
+    isolated = os.path.join(provider_home, ".grok", "auth.json")
+    if os.path.lexists(isolated):
+        _validate_auth_state(provider_home)
+        return isolated
+
+    official_home = os.path.realpath(os.path.expanduser("~"))
+    official_state = os.path.join(official_home, ".grok")
+    official = os.path.join(official_state, "auth.json")
+    if not os.path.lexists(official):
+        return None
+    _validate_state_directory(
+        official_state,
+        label="official auth directory",
+        forbid_shared_write=True,
+    )
+    try:
+        metadata = os.lstat(official)
+    except OSError:
+        raise ConfigurationError(
+            "Grok official auth state could not be inspected"
+        ) from None
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != getattr(os, "geteuid", lambda: metadata.st_uid)()
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+        or os.path.realpath(official) != official
+    ):
+        raise ConfigurationError(
+            "Grok official auth state must be a private regular file"
+        )
+    return official
+
+
+def _permission_glob(path: str) -> str:
+    root = os.path.realpath(path)
+    if (
+        not os.path.isabs(root)
+        or any(character in root for character in "\x00\n\r()[]{}*?!")
+    ):
+        raise ConfigurationError(
+            "Grok workspace path cannot be represented as a permission rule"
+        )
+    return root.rstrip(os.sep) + os.sep + "**"
+
+
+def _sandbox_payload(provider_home: str, credential_path: Optional[str]) -> bytes:
+    read_only = []
+    if credential_path is not None:
+        credential_root = os.path.dirname(credential_path)
+        managed_root = os.path.join(provider_home, ".grok")
+        if os.path.commonpath((managed_root, credential_root)) != managed_root:
+            read_only.append(credential_root)
+    encoded_paths = ", ".join(
+        json.dumps(path, ensure_ascii=False) for path in read_only
+    )
+    return (
+        "[profiles.{profile}]\n"
+        'extends = "strict"\n'
+        "restrict_network = true\n"
+        "read_only = [{paths}]\n"
+    ).format(
+        profile=GROK_SANDBOX_PROFILE,
+        paths=encoded_paths,
+    ).encode("utf-8", "strict")
+
+
+def _prepare_managed_sandbox_configuration(
+    provider_home: str,
+    credential_path: Optional[str],
+) -> None:
+    if not _managed_provider_home(provider_home):
+        return
+    path = os.path.join(provider_home, ".grok", "sandbox.toml")
+    expected = _sandbox_payload(provider_home, credential_path)
+    flags = os.O_RDWR | os.O_CREAT
+    flags |= getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError:
+        raise ConfigurationError(
+            "Grok managed sandbox config could not be prepared"
+        ) from None
+    try:
+        os.fchmod(descriptor, 0o600)
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_uid != getattr(os, "geteuid", lambda: before.st_uid)()
+            or before.st_nlink != 1
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_size > 16 * 1024
+        ):
+            raise ConfigurationError(
+                "Grok managed sandbox config is unsafe"
+            )
+        current = os.read(descriptor, 16 * 1024 + 1)
+        known = {
+            _sandbox_payload(provider_home, None),
+            _sandbox_payload(
+                provider_home,
+                os.path.join(provider_home, ".grok", "auth.json"),
+            ),
+            _sandbox_payload(
+                provider_home,
+                os.path.join(
+                    os.path.realpath(os.path.expanduser("~")),
+                    ".grok",
+                    "auth.json",
+                ),
+            ),
+        }
+        if current and current not in known:
+            raise ConfigurationError(
+                "Grok managed sandbox config is not owned by unified-cli"
+            )
+        if current != expected:
+            os.lseek(descriptor, 0, os.SEEK_SET)
+            os.ftruncate(descriptor, 0)
+            remaining = memoryview(expected)
+            while remaining:
+                written = os.write(descriptor, remaining)
+                if written <= 0:
+                    raise OSError("short write")
+                remaining = remaining[written:]
+            os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            not _same_identity(before, after)
+            or after.st_size != len(expected)
+        ):
+            raise ConfigurationError(
+                "Grok managed sandbox config changed during preparation"
+            )
+    except ConfigurationError:
+        raise
+    except OSError:
+        raise ConfigurationError(
+            "Grok managed sandbox config could not be prepared"
+        ) from None
+    finally:
+        os.close(descriptor)
+
+
+def _validate_managed_sandbox_configuration(provider_home: str) -> None:
+    if not _managed_provider_home(provider_home):
+        return
+    path = os.path.join(provider_home, ".grok", "sandbox.toml")
+    expected = _sandbox_payload(provider_home, _credential_path(provider_home))
+    descriptor, before = _open_private_state_file(
+        path,
+        label="managed sandbox config",
+    )
+    try:
+        if before.st_size != len(expected):
+            raise ConfigurationError(
+                "Grok managed sandbox config is invalid"
+            )
+        payload = os.read(descriptor, len(expected) + 1)
+        after = os.fstat(descriptor)
+        if (
+            payload != expected
+            or not _same_identity(before, after)
+            or after.st_size != len(expected)
+        ):
+            raise ConfigurationError(
+                "Grok managed sandbox config is invalid"
+            )
+    finally:
+        os.close(descriptor)
+
+
 def _validate_provider_configuration(provider_home: object) -> None:
     if (
         type(provider_home) is not str
@@ -741,6 +1016,7 @@ def _validate_provider_configuration(provider_home: object) -> None:
     )
     _validate_safe_config(home)
     _validate_auth_state(home)
+    _validate_managed_sandbox_configuration(home)
     if any(_entry_exists(home, parts) for parts in _BLOCKED_HOME_ENTRIES):
         raise ConfigurationError(
             "Grok Preview refuses provider-home tool, plugin, or hook configuration"
@@ -847,78 +1123,398 @@ def _finalize(state: dict):
     return ({"type": "done", "reason": reason},)
 
 
-_BASE_PLUGIN = adapter_plugin(
-    ADAPTER_SPEC,
+class _GrokBridge(AdapterProviderBridge):
+    def _prompt_values(
+        self,
+        *,
+        model: str,
+        session_id: Optional[str],
+        resume_last: bool,
+    ) -> Mapping[str, AdapterPromptValueV1]:
+        values = dict(
+            super()._prompt_values(
+                model=model,
+                session_id=session_id,
+                resume_last=resume_last,
+            )
+        )
+        workspace = _permission_glob(self.cwd)
+        provider_state = _permission_glob(
+            os.path.join(self._provider_home or "", ".grok")
+        )
+        denials = [
+            "Read({})".format(provider_state),
+            "Grep({})".format(provider_state),
+        ]
+        credential_path = _credential_path(self._provider_home or "")
+        if credential_path is not None:
+            credential_state = _permission_glob(os.path.dirname(credential_path))
+            if credential_state != provider_state:
+                denials.extend(
+                    (
+                        "Read({})".format(credential_state),
+                        "Grep({})".format(credential_state),
+                    )
+                )
+        values["workspace_permissions"] = (
+            "Read({})".format(workspace),
+            "Grep({})".format(workspace),
+        )
+        values["private_state_denials"] = tuple(denials)
+        return MappingProxyType(values)
+
+    @contextmanager
+    def _prepare_invocation(
+        self,
+        prompt: str,
+        images: Optional[list],
+    ) -> Iterator[Tuple[str, Mapping[str, AdapterPromptValueV1]]]:
+        if type(prompt) is not str or not prompt.strip():
+            raise ConfigurationError("provider prompt must not be empty")
+        blocks = [{"type": "text", "text": prompt}]
+        for payload, media_type, _extension in normalized_image_payloads(images):
+            blocks.append(
+                {
+                    "type": "image",
+                    "data": base64.b64encode(payload).decode("ascii"),
+                    "mimeType": media_type,
+                }
+            )
+        try:
+            encoded = json.dumps(
+                blocks,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8", "strict")
+        except (TypeError, UnicodeError):
+            raise ConfigurationError("provider prompt could not be encoded") from None
+        with private_invocation_directory() as directory:
+            path = write_private_file(directory, "prompt.json", encoded)
+            yield path, MappingProxyType({})
+
+
+_MODEL_LIMITS = OperationLimits(30.0, 512 * 1024, 128 * 1024, 512)
+
+
+class _GrokRuntime(_AdapterPluginRuntime):
+    def __init__(self) -> None:
+        super().__init__(
+            ADAPTER_SPEC,
+            GROK_DEFAULT_MODEL,
+            _resolve_grok_installation,
+            _state,
+            _map_record,
+            None,
+            _finalize,
+            _validate_runtime_boundary,
+        )
+
+    def _active_gate(
+        self,
+        *,
+        spec: ProviderAdapterSpecV1,
+        bin_path: Optional[str],
+        receipt: Optional[InstallationReceiptV1],
+        provider_env: Optional[Mapping[str, str]],
+        provider_home: str,
+    ) -> Tuple[
+        ProviderAdapterV1,
+        BinaryProvenance,
+        AdapterInspectionV1,
+        Mapping[str, str],
+    ]:
+        environment = dict(spec.environment.select(provider_env))
+        environment["GROK_HOME"] = os.path.join(provider_home, ".grok")
+        credential_path = _credential_path(provider_home)
+        if credential_path is not None:
+            environment["GROK_AUTH_PATH"] = credential_path
+        else:
+            environment.pop("GROK_AUTH_PATH", None)
+        environment = MappingProxyType(environment)
+        adapter = ProviderAdapterV1(spec)
+        candidate = self._candidate(bin_path, receipt)
+        binary = adapter.resolve_installation(candidate)
+        inspection = adapter.inspect(
+            binary,
+            provider_env=environment,
+            provider_home=provider_home,
+        )
+        if not adapter.doctor_provider(
+            inspection,
+            provider_env=environment,
+            provider_home=provider_home,
+        ):
+            raise ConfigurationError("provider doctor reported unavailable")
+        return adapter, binary, inspection, environment
+
+    def factory(
+        self,
+        *,
+        model: Optional[str] = None,
+        cwd: Optional[str] = None,
+        bin_path: Optional[str] = None,
+        extra_env: Optional[Mapping[str, str]] = None,
+        timeout: Optional[float] = None,
+        first_output_timeout: Optional[float] = None,
+        web_search: bool = False,
+        max_output_bytes: Optional[int] = None,
+        max_stderr_bytes: Optional[int] = None,
+        max_stream_buffer_bytes: Optional[int] = None,
+        max_stream_events: Optional[int] = None,
+        max_stream_line_bytes: Optional[int] = None,
+        receipt: Optional[InstallationReceiptV1] = None,
+        provider_home: Optional[str] = None,
+        **unknown: Any,
+    ) -> AdapterProviderBridge:
+        if unknown or first_output_timeout is not None:
+            raise ConfigurationError("provider factory received unsupported options")
+        if type(cwd) is not str:
+            raise ConfigurationError("provider factory requires an explicit cwd")
+        if type(provider_home) is not str:
+            raise ConfigurationError(
+                "Grok provider requires an explicit private provider home"
+            )
+        if type(web_search) is not bool:
+            raise ConfigurationError("web_search must be bool")
+        from ..transports import validated_workspace
+
+        workspace = validated_workspace(cwd)
+        _prepare_managed_provider_configuration(provider_home)
+        _validate_runtime_boundary(workspace, provider_home)
+        selected_model = _validated_model_id(
+            GROK_DEFAULT_MODEL if model is None else model
+        )
+        spec = _WEB_ADAPTER_SPEC if web_search else ADAPTER_SPEC
+        limits = _effective_limits(
+            spec,
+            timeout=timeout,
+            max_output_bytes=max_output_bytes,
+            max_stderr_bytes=max_stderr_bytes,
+            max_stream_buffer_bytes=max_stream_buffer_bytes,
+            max_stream_events=max_stream_events,
+            max_stream_line_bytes=max_stream_line_bytes,
+        )
+        adapter, binary, inspection, environment = self._active_gate(
+            spec=spec,
+            bin_path=bin_path,
+            receipt=receipt,
+            provider_env=extra_env,
+            provider_home=provider_home,
+        )
+        return _GrokBridge(
+            adapter=adapter,
+            inspection=inspection,
+            binary=binary,
+            default_model=GROK_DEFAULT_MODEL,
+            model=selected_model,
+            cwd=workspace,
+            provider_env=environment,
+            provider_home=provider_home,
+            limits=limits,
+            state_factory=_state,
+            map_record=_map_record,
+            map_response=None,
+            finalize=_finalize,
+            turn_preflight=_validate_runtime_boundary,
+            web_search=web_search,
+            allow_web_search=True,
+            max_stream_buffer_bytes=max_stream_buffer_bytes,
+            max_stream_line_bytes=max_stream_line_bytes,
+        )
+
+    @staticmethod
+    def _provider_home() -> str:
+        from unified_cli.extension_config import default_provider_home
+
+        home = default_provider_home(ADAPTER_SPEC.id)
+        _prepare_managed_provider_configuration(home)
+        return home
+
+    @staticmethod
+    def _model_ids(output: str) -> Tuple[str, ...]:
+        values = []
+        default = ""
+        for raw in output.splitlines():
+            line = raw.strip()
+            if line.lower().startswith("default model:"):
+                default = line.partition(":")[2].strip()
+            elif line.startswith("*"):
+                value = line[1:].strip()
+                if value.endswith("(default)"):
+                    value = value[: -len("(default)")].strip()
+                if value:
+                    values.append(value)
+        if default and default not in values:
+            values.insert(0, default)
+        if (
+            not values
+            or len(values) != len(set(values))
+            or any(
+                len(value) > 512
+                or any(character.isspace() for character in value)
+                for value in values
+            )
+        ):
+            raise ProtocolError("Grok returned an invalid model list")
+        return tuple(values)
+
+    def _models_from_gate(
+        self,
+        adapter: ProviderAdapterV1,
+        inspection: AdapterInspectionV1,
+        binary: BinaryProvenance,
+        environment: Mapping[str, str],
+        provider_home: str,
+    ) -> Tuple[ModelInfo, ...]:
+        output, _ = run_provider_command(
+            adapter=adapter,
+            inspection=inspection,
+            binary=binary,
+            argv=("--no-auto-update", "models"),
+            provider_env=environment,
+            provider_home=provider_home,
+            limits=_MODEL_LIMITS,
+        )
+        values = self._model_ids(output)
+        return tuple(
+            ModelInfo(
+                id=value,
+                provider=ADAPTER_SPEC.id,
+                default=value == GROK_DEFAULT_MODEL,
+                source="plugin",
+            )
+            for value in values
+        )
+
+    def _models_with_context(
+        self,
+        receipt: InstallationReceiptV1,
+        provider_env: Mapping[str, str],
+        provider_home: Optional[str],
+    ) -> Tuple[ModelInfo, ...]:
+        if type(provider_home) is not str:
+            raise ConfigurationError("Grok provider home is unavailable")
+        _prepare_managed_provider_configuration(provider_home)
+        _validate_provider_configuration(provider_home)
+        adapter, binary, inspection, environment = self._active_gate(
+            spec=ADAPTER_SPEC,
+            bin_path=None,
+            receipt=receipt,
+            provider_env=provider_env,
+            provider_home=provider_home,
+        )
+        return self._models_from_gate(
+            adapter, inspection, binary, environment, provider_home
+        )
+
+    def models(self) -> Tuple[ModelInfo, ...]:
+        provider_home = self._provider_home()
+        adapter, binary, inspection, environment = self._active_gate(
+            spec=ADAPTER_SPEC,
+            bin_path=None,
+            receipt=None,
+            provider_env={},
+            provider_home=provider_home,
+        )
+        return self._models_from_gate(
+            adapter, inspection, binary, environment, provider_home
+        )
+
+    def _doctor_from_gate(
+        self,
+        adapter: ProviderAdapterV1,
+        inspection: AdapterInspectionV1,
+        binary: BinaryProvenance,
+        environment: Mapping[str, str],
+        provider_home: str,
+    ) -> Mapping[str, object]:
+        del adapter, binary
+        authenticated = bool(environment.get("XAI_API_KEY")) or bool(
+            environment.get("GROK_AUTH_PATH")
+        )
+        return MappingProxyType(
+            {
+                "id": ADAPTER_SPEC.id,
+                "available": True,
+                "authenticated": authenticated,
+                "status": ADAPTER_SPEC.status.value,
+                "version": inspection.version,
+            }
+        )
+
+    def _doctor_with_context(
+        self,
+        receipt: InstallationReceiptV1,
+        provider_env: Mapping[str, str],
+        provider_home: Optional[str],
+    ) -> Mapping[str, object]:
+        try:
+            if type(provider_home) is not str:
+                raise ConfigurationError("Grok provider home is unavailable")
+            _prepare_managed_provider_configuration(provider_home)
+            _validate_provider_configuration(provider_home)
+            adapter, binary, inspection, environment = self._active_gate(
+                spec=ADAPTER_SPEC,
+                bin_path=None,
+                receipt=receipt,
+                provider_env=provider_env,
+                provider_home=provider_home,
+            )
+            return self._doctor_from_gate(
+                adapter, inspection, binary, environment, provider_home
+            )
+        except (KeyboardInterrupt, GeneratorExit):
+            raise
+        except ExtensionError:
+            return MappingProxyType(
+                {
+                    "id": ADAPTER_SPEC.id,
+                    "available": False,
+                    "authenticated": False,
+                    "status": ADAPTER_SPEC.status.value,
+                }
+            )
+
+    def doctor(self) -> Mapping[str, object]:
+        try:
+            provider_home = self._provider_home()
+            adapter, binary, inspection, environment = self._active_gate(
+                spec=ADAPTER_SPEC,
+                bin_path=None,
+                receipt=None,
+                provider_env={},
+                provider_home=provider_home,
+            )
+            return self._doctor_from_gate(
+                adapter, inspection, binary, environment, provider_home
+            )
+        except (KeyboardInterrupt, GeneratorExit):
+            raise
+        except ExtensionError:
+            return MappingProxyType(
+                {
+                    "id": ADAPTER_SPEC.id,
+                    "available": False,
+                    "authenticated": False,
+                    "status": ADAPTER_SPEC.status.value,
+                }
+            )
+
+
+_RUNTIME = _GrokRuntime()
+PLUGIN = ProviderPluginV1(
+    id=ADAPTER_SPEC.id,
+    factory=_RUNTIME.factory,
     default_model=GROK_DEFAULT_MODEL,
-    launch_resolver=_resolve_grok_installation,
-    state_factory=_state,
-    map_record=_map_record,
-    finalize=_finalize,
-    turn_preflight=_validate_runtime_boundary,
-)
-
-
-def _checked_factory(*args, **kwargs):
-    if args:
-        raise ConfigurationError(
-            "provider factory received unsupported positional options"
-        )
-    _prepare_managed_provider_configuration(kwargs.get("provider_home"))
-    _validate_runtime_boundary(kwargs.get("cwd"), kwargs.get("provider_home"))
-    return _require_exact_version(_BASE_PLUGIN.factory(**kwargs))
-
-
-def _require_exact_version(instance):
-    inspection = getattr(instance, "_inspection", None)
-    version = getattr(inspection, "version", None)
-    if type(version) is not str or version != GROK_STAGE_6_TARGET_VERSION:
-        raise ProtocolError(
-            "Grok Preview requires exact version {}".format(
-                GROK_STAGE_6_TARGET_VERSION
-            )
-        )
-    return instance
-
-
-def _require_exact_doctor_version(result):
-    if (
-        not isinstance(result, Mapping)
-        or result.get("available") is not True
-        or result.get("version") != GROK_STAGE_6_TARGET_VERSION
-    ):
-        raise ProtocolError(
-            "Grok Preview requires exact version {}".format(
-                GROK_STAGE_6_TARGET_VERSION
-            )
-        )
-    return result
-
-
-def _checked_binder(context):
-    bound = _BASE_PLUGIN.launch_binder(context)
-    _prepare_managed_provider_configuration(bound.provider_home)
-    _validate_provider_configuration(bound.provider_home)
-
-    def create_checked(request):
-        _validate_runtime_boundary(request.workspace, bound.provider_home)
-        return _require_exact_version(bound.factory(request))
-
-    def doctor_checked():
-        _validate_provider_configuration(bound.provider_home)
-        return _require_exact_doctor_version(bound.doctor())
-
-    return replace(bound, factory=create_checked, doctor=doctor_checked)
-
-
-def _checked_doctor():
-    return _require_exact_doctor_version(_BASE_PLUGIN.doctor())
-
-
-PLUGIN = replace(
-    _BASE_PLUGIN,
-    factory=_checked_factory,
-    doctor=_checked_doctor,
-    launch_binder=_checked_binder,
+    model_lister=_RUNTIME.models,
+    doctor=_RUNTIME.doctor,
+    capabilities=ADAPTER_SPEC.capabilities,
+    route_prefixes=(ADAPTER_SPEC.id,),
+    server_policy=ProviderServerPolicyV1(enabled=False),
+    support_status="stable",
+    configuration_abi_version=PROVIDER_CONFIGURATION_ABI_V1,
+    launch_binder=_RUNTIME.bind,
+    environment_keys=frozenset(("XAI_API_KEY",)),
 )
 
 

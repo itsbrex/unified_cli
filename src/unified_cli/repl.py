@@ -1429,6 +1429,12 @@ class _SlashContext:
         _safe_print(t("repl.theme.changed", value=value), style="dim")
 
     def _lang(self, argument: str) -> None:
+        if not argument and self.use_ptk:
+            argument = pick_value(
+                "language", ("en", "ko"), default=current_lang()
+            ) or ""
+            if not argument:
+                return
         if not argument:
             _safe_print(t("repl.lang.usage", lang=current_lang()), style="dim")
             return

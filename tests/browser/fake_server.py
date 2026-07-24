@@ -66,10 +66,12 @@ def main() -> None:
     grok = ProviderDescriptorV1(
         id="grok",
         source="extension",
-        status="discovered",
-        support_status="preview",
-        default_model=None,
-        capabilities=frozenset(),
+        status="loaded",
+        support_status="stable",
+        default_model="grok-4.5",
+        capabilities=frozenset(
+            ("chat", "images", "sessions", "stream", "tools")
+        ),
         route_prefixes=("grok",),
         server_policy=ProviderServerPolicyV1(
             enabled=False, requires_external_isolation=True,
@@ -80,7 +82,7 @@ def main() -> None:
     runtime = manage.get_manage_runtime()
     assert runtime is not None
     # Keep one constructor-injected-style Ext row to prove that arbitrary
-    # metadata remains non-actionable beside the audited bundled Preview row.
+    # metadata remains non-actionable beside the audited bundled Stable row.
     runtime._extension_provider_snapshots += (
         manage._copy_extension_provider_snapshot(extension),
     )
